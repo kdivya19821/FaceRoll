@@ -7,18 +7,13 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Subjects from './pages/Subjects';
 import Students from './pages/Students';
-import { getCurrentTeacher, login } from './utils/storage';
+import { getCurrentTeacher } from './utils/storage';
 
 const ProtectedRoute = ({ children }) => {
-  return children; // Bypass Login completely
+  return getCurrentTeacher() ? children : <Navigate to="/login" replace />;
 };
 
 function App() {
-  React.useEffect(() => {
-    if (!getCurrentTeacher()) {
-      login('Admin'); // Fallback so app functions don't break
-    }
-  }, []);
   return (
     <Router>
       <div className="w-full min-h-screen bg-zinc-950 text-white font-sans selection:bg-indigo-500/30">
