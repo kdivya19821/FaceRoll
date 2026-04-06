@@ -39,7 +39,7 @@ export default function Attendance() {
             }
 
             if (labeledDescriptors.length > 0) {
-                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.60);
+                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.65);
                 setRegisteredCount(labeledDescriptors.length);
             } else {
                 setRegisteredCount(0);
@@ -64,74 +64,84 @@ export default function Attendance() {
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Log for debugging
-            const bestMatch = faceMatcherRef.current.findBestMatch(detections[0].descriptor);
-            
-            // Draw result on box
-            const box = resizedDetections[0].detection.box;
-            const drawLabel = new faceapi.draw.DrawTextField(
-                [`${bestMatch.label} (${Math.round((1 - bestMatch.distance) * 100)}%)`],
-                box.bottomLeft
-            );
-            faceapi.draw.drawDetections(canvas, resizedDetections);
-            drawLabel.draw(canvas);
+            // Loop through all detected faces
+            let matchedStudent = null;
+            let unrecognizedCount = 0;
 
-            if (bestMatch.label !== 'unknown') {
-                const student = getStudents().find(s => s.id.toString() === bestMatch.label);
-                if (student) {
-                    scanningCooldownRef.current = true;
+            resizedDetections.forEach((detection, i) => {
+                const bestMatch = faceMatcherRef.current.findBestMatch(detections[i].descriptor);
+                const box = detection.detection.box;
+                
+                // Draw detection box and results for every face
+                const isUnknown = bestMatch.label === 'unknown';
+                const labelColor = isUnknown ? '#ef4444' : '#10b981'; // Red for unknown, Emerald for match
+                
+                const drawBox = new faceapi.draw.DrawBox(box, { 
+                    label: isUnknown ? 'Unknown' : bestMatch.label,
+                    boxColor: labelColor,
+                    drawLabel: true
+                });
+                drawBox.draw(canvas);
 
-                    const isLate = checkLateStatus(selectedPeriod);
-                    
-                    // Capture Location
-                    let location = null;
-                    if ('geolocation' in navigator) {
-                        try {
-                            const position = await new Promise((resolve, reject) => {
-                                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-                            });
-                            location = {
-                                lat: position.coords.latitude,
-                                lng: position.coords.longitude
-                            };
-                        } catch (err) {
-                            console.warn("Location capture failed", err);
-                        }
+                if (!isUnknown && !matchedStudent && !scanningCooldownRef.current) {
+                    const student = getStudents().find(s => s.id.toString() === bestMatch.label);
+                    if (student) {
+                        matchedStudent = { student, bestMatch };
                     }
-
-                    const now = new Date();
-                    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    const day = now.toLocaleDateString([], { weekday: 'long' });
-
-                    const logData = {
-                        studentName: student.name,
-                        studentId: student.id,
-                        period: selectedPeriod,
-                        teacher: getCurrentTeacher() || 'Unknown Teacher',
-                        fullDate: now.toDateString(),
-                        time,
-                        day,
-                        isLate,
-                        location
-                    };
-
-                    saveLog(logData);
-                    setSuccessData(logData);
-                    
-                    if (voiceEnabled) {
-                        announceAttendance(student.name, isLate);
-                    }
-
-                    setStatus(isLate ? `Late Entry: ${student.name}` : `Success: ${student.name} matched!`);
-
-                    setTimeout(() => {
-                        setSuccessData(null);
-                        setStatus("Scanning...");
-                        scanningCooldownRef.current = false;
-                    }, 4000);
+                } else if (isUnknown) {
+                    unrecognizedCount++;
                 }
-            } else {
-                setStatus(`Detected: Unknown (Match: ${Math.round((1 - bestMatch.distance) * 100)}%)`);
+            });
+
+            if (matchedStudent) {
+                const { student, bestMatch } = matchedStudent;
+                scanningCooldownRef.current = true;
+
+                const isLate = checkLateStatus(selectedPeriod);
+                
+                // Capture Location
+                let location = null;
+                if ('geolocation' in navigator) {
+                    try {
+                        const position = await new Promise((resolve, reject) => {
+                            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 });
+                        });
+                        location = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    } catch (err) { }
+                }
+
+                const now = new Date();
+                const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const day = now.toLocaleDateString([], { weekday: 'long' });
+
+                const logData = {
+                    studentName: student.name,
+                    studentId: student.id,
+                    period: selectedPeriod,
+                    teacher: getCurrentTeacher() || 'Unknown Teacher',
+                    fullDate: now.toDateString(),
+                    time,
+                    day,
+                    isLate,
+                    location
+                };
+
+                saveLog(logData);
+                setSuccessData(logData);
+                
+                if (voiceEnabled) {
+                    announceAttendance(student.name, isLate);
+                }
+
+                setStatus(isLate ? `Late Entry: ${student.name}` : `Success: ${student.name} matched!`);
+
+                setTimeout(() => {
+                    setSuccessData(null);
+                    setStatus("Scanning...");
+                    scanningCooldownRef.current = false;
+                }, 4000);
+            } else if (unrecognizedCount > 0) {
+                setStatus(`Detected ${unrecognizedCount} unregistered face(s).`);
             }
         } catch (err) { 
             setStatus("Scanner Error: " + err.message);
