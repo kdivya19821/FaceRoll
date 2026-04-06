@@ -142,7 +142,15 @@ export default function Attendance() {
                     scanningCooldownRef.current = false;
                 }, 4000);
             } else if (unrecognizedCount > 0) {
+                scanningCooldownRef.current = true;
                 setStatus(`Detected ${unrecognizedCount} unregistered face(s).`);
+                if (voiceEnabled) {
+                    speak("Invalid face detected.");
+                }
+                setTimeout(() => {
+                    setStatus("Scanning...");
+                    scanningCooldownRef.current = false;
+                }, 3000);
             }
         } catch (err) { 
             setStatus("Scanner Error: " + err.message);
