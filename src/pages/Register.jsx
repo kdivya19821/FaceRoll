@@ -4,8 +4,9 @@ import * as faceapi from '@vladmandic/face-api';
 import { ArrowLeft, UserPlus, Trash2 } from 'lucide-react';
 import CameraView from '../components/CameraView';
 import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
+import { announceRegistration } from '../utils/speechUtils';
 import { 
-    STUDENTS, saveFaceDescriptor, getFaceDescriptors, removeFaceDescriptor,
+    getStudents, saveFaceDescriptor, getFaceDescriptors, removeFaceDescriptor,
     TEACHER_SUBJECTS, saveTeacherFaceDescriptor, getTeacherFaceDescriptors, removeTeacherFaceDescriptor 
 } from '../utils/storage';
 
@@ -73,6 +74,7 @@ export default function Register() {
             }
             setIsFaceRegistered(true);
             setStatus("Face successfully registered!");
+            announceRegistration(selectedPerson);
         } else {
             setStatus("No face detected! Move to bright light.");
         }
@@ -139,7 +141,7 @@ export default function Register() {
                         >
                             <option value="">-- Choose Name --</option>
                             {registerMode === 'student' 
-                                ? STUDENTS.map(s => <option key={s.id} value={s.id.toString()}>{s.id}. {s.name} {studentData[s.id] ? '(Registered)' : ''}</option>)
+                                ? getStudents().map(s => <option key={s.id} value={s.id.toString()}>{s.id}. {s.name} {studentData[s.id] ? '(Registered)' : ''}</option>)
                                 : TEACHERS.map(t => <option key={t} value={t}>{t} {teacherData[t] ? '(Registered)' : ''}</option>)
                             }
                         </select>

@@ -2,8 +2,9 @@ const STORAGE_KEY = 'smart_attendance_logs';
 const FACE_DATA_KEY = 'smart_attendance_faces';
 const TEACHER_KEY = 'smart_attendance_teacher';
 const PERIODS_KEY = 'smart_attendance_periods';
+const STUDENT_LIST_KEY = 'smart_attendance_student_list';
 
-export const STUDENTS = [
+const DEFAULT_STUDENTS = [
     { id: 1, name: 'Affrin' },
     { id: 2, name: 'SyedaSafiya' },
     { id: 3, name: 'Sibitha' },
@@ -16,11 +17,64 @@ export const STUDENTS = [
     { id: 10, name: 'IfthazNoor' }
 ];
 
+export function getStudents() {
+    const list = localStorage.getItem(STUDENT_LIST_KEY);
+    if (!list) {
+        localStorage.setItem(STUDENT_LIST_KEY, JSON.stringify(DEFAULT_STUDENTS));
+        return DEFAULT_STUDENTS;
+    }
+    return JSON.parse(list);
+}
+
+export function saveStudent(student) {
+    const students = getStudents();
+    const existing = students.find(s => s.id === student.id);
+    if (existing) {
+        existing.name = student.name;
+    } else {
+        students.push(student);
+    }
+    localStorage.setItem(STUDENT_LIST_KEY, JSON.stringify(students));
+}
+
+export function removeStudent(studentId) {
+    const students = getStudents().filter(s => s.id !== studentId);
+    localStorage.setItem(STUDENT_LIST_KEY, JSON.stringify(students));
+}
+
 export const TEACHER_SUBJECTS = {
     'Ms.Soumya': ['AI', 'WebContentSystem Managemwnt'],
     'Ms.Sujatha': ['FDS'],
     'Ms.Selva Priya': ['PHPandMySQL']
 };
+
+/**
+ * Default period start times for Late Entry detection.
+ * (Adjust these based on actual class timings)
+ */
+export const PERIOD_TIMINGS = {
+    'AI': '09:00',
+    'WebContentSystem Managemwnt': '10:30',
+    'FDS': '11:45',
+    'PHPandMySQL': '14:00'
+};
+
+export function checkLateStatus(periodName) {
+    const startTime = PERIOD_TIMINGS[periodName];
+    if (!startTime) return false;
+
+    const now = new Date();
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const startObj = new Date();
+    startObj.setHours(startHour, startMin, 0, 0);
+
+    // If current time is 15 minutes later than start time, mark as late.
+    const lateThresholdMinutes = 15;
+    const diffMs = now - startObj;
+    const diffMins = diffMs / (1000 * 60);
+
+    return diffMins > lateThresholdMinutes;
+}
 
 export function login(name) {
     localStorage.setItem(TEACHER_KEY, name.trim());
@@ -79,7 +133,12 @@ export function getLogs() {
 
 export function saveLog(logData) {
     const logs = getLogs();
-    logs.push({ ...logData, timestamp: new Date().toISOString() });
+    logs.push({ 
+        ...logData, 
+        timestamp: new Date().toISOString(),
+        location: logData.location || null, // Capture Geo-tag
+        isLate: logData.isLate || false     // Late status
+    });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
 }
 
@@ -125,10 +184,12 @@ export function getAttendanceStats() {
                 studentName: log.studentName,
                 subject: log.period,
                 attended: new Set(), // use set to avoid double-counting same student in same session
+                lateCount: 0,
                 total: sessionsBySubject[log.period].size
             };
         }
         stats[key].attended.add(log.fullDate);
+        if (log.isLate) stats[key].lateCount += 1;
     });
 
     // Convert sets to numbers and flatten

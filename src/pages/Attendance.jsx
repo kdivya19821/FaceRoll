@@ -4,7 +4,9 @@ import * as faceapi from '@vladmandic/face-api';
 import { ArrowLeft, CheckCircle2, ScanFace } from 'lucide-react';
 import CameraView from '../components/CameraView';
 import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
-import { STUDENTS, getPeriods, saveLog, getFaceDescriptors, getCurrentTeacher } from '../utils/storage';
+import { getStudents, getPeriods, saveLog, getFaceDescriptors, getCurrentTeacher, checkLateStatus } from '../utils/storage';
+import { announceAttendance, speak } from '../utils/speechUtils';
+import { Volume2, VolumeX, MapPin, Clock3 } from 'lucide-react';
 
 export default function Attendance() {
     const navigate = useNavigate();
@@ -14,6 +16,8 @@ export default function Attendance() {
     const [registeredCount, setRegisteredCount] = useState(0);
     const [status, setStatus] = useState('Select period to start scanning');
     const [successData, setSuccessData] = useState(null);
+    const [voiceEnabled, setVoiceEnabled] = useState(true);
+    const [isLocating, setIsLocating] = useState(false);
 
     const cameraRef = useRef(null);
     const faceMatcherRef = useRef(null);
@@ -73,12 +77,27 @@ export default function Attendance() {
             drawLabel.draw(canvas);
 
             if (bestMatch.label !== 'unknown') {
-                const student = STUDENTS.find(s => s.id.toString() === bestMatch.label);
+                const student = getStudents().find(s => s.id.toString() === bestMatch.label);
                 if (student) {
                     scanningCooldownRef.current = true;
 
-                    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    const day = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+                    const isLate = checkLateStatus(selectedPeriod);
+                    
+                    // Capture Location
+                    let location = null;
+                    if ('geolocation' in navigator) {
+                        try {
+                            const position = await new Promise((resolve, reject) => {
+                                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+                            });
+                            location = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            };
+                        } catch (err) {
+                            console.warn("Location capture failed", err);
+                        }
+                    }
 
                     const logData = {
                         studentName: student.name,
@@ -87,18 +106,25 @@ export default function Attendance() {
                         teacher: getCurrentTeacher(),
                         fullDate: new Date().toDateString(),
                         time,
-                        day
+                        day,
+                        isLate,
+                        location
                     };
 
                     saveLog(logData);
                     setSuccessData(logData);
-                    setStatus(`Success: ${student.name} matched!`);
+                    
+                    if (voiceEnabled) {
+                        announceAttendance(student.name, isLate);
+                    }
+
+                    setStatus(isLate ? `Late Entry: ${student.name}` : `Success: ${student.name} matched!`);
 
                     setTimeout(() => {
                         setSuccessData(null);
                         setStatus("Scanning...");
                         scanningCooldownRef.current = false;
-                    }, 3000);
+                    }, 4000);
                 }
             } else {
                 setStatus(`Detected: Unknown (Match: ${Math.round((1 - bestMatch.distance) * 100)}%)`);
@@ -115,7 +141,15 @@ export default function Attendance() {
                     <ArrowLeft className="w-6 h-6 text-zinc-300" />
                 </button>
                 <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-400">Attendance Scan</h2>
-                <div className="w-10"></div>
+                <button 
+                    onClick={() => {
+                        setVoiceEnabled(!voiceEnabled);
+                        if (!voiceEnabled) speak("Voice enabled");
+                    }}
+                    className={`p-2 rounded-full transition border ${voiceEnabled ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-500'}`}
+                >
+                    {voiceEnabled ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
+                </button>
             </div>
 
             <div className="bg-zinc-900 rounded-3xl p-4 mb-6 shadow-xl border border-zinc-800/80">
@@ -150,10 +184,26 @@ export default function Attendance() {
                                 <CheckCircle2 className="w-16 h-16 text-emerald-400 mx-auto mb-4" />
                                 <h3 className="text-2xl font-bold text-white mb-1">{successData.studentName}</h3>
                                 <p className="text-zinc-400 font-medium mb-4">ID: #{successData.studentId}</p>
-                                <div className="bg-zinc-800/50 rounded-xl p-3 space-y-1">
-                                    <p className="text-sm text-zinc-300"><span className="text-emerald-400 font-bold">Class:</span> {successData.period}</p>
+                                <div className="bg-zinc-800/50 rounded-xl p-3 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm text-zinc-300"><span className="text-emerald-400 font-bold">Class:</span> {successData.period}</p>
+                                        {successData.isLate && (
+                                            <span className="flex items-center space-x-1 bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-500/30">
+                                                <Clock3 className="w-3 h-3" />
+                                                <span>LATE</span>
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-sm text-zinc-300"><span className="text-emerald-400 font-bold">Time:</span> {successData.time}</p>
-                                    <p className="text-sm text-zinc-300"><span className="text-emerald-400 font-bold">Day:</span> {successData.day}</p>
+                                    <div className="flex items-center justify-between text-sm text-zinc-300">
+                                        <p><span className="text-emerald-400 font-bold">Day:</span> {successData.day}</p>
+                                        {successData.location && (
+                                            <span className="flex items-center space-x-1 text-zinc-500 text-[9px]">
+                                                <MapPin className="w-3 h-3 text-emerald-500" />
+                                                <span>Location Captured</span>
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>

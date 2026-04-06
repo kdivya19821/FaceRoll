@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, BookOpen, Trash2, PieChart, List, UserCheck, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, BookOpen, Trash2, PieChart, List, UserCheck, AlertCircle, BarChart3, MapPin, TrendingUp, Landmark, Download } from 'lucide-react';
 import { getLogs, clearLogs, getAttendanceStats } from '../utils/storage';
+import { 
+    ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, 
+    Cell, PieChart as RePieChart, Pie, Legend 
+} from 'recharts';
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -15,6 +19,38 @@ export default function Dashboard() {
             setLogs([]);
             window.location.reload(); // Refresh stats
         }
+    };
+
+    const handleExport = () => {
+        if (logs.length === 0) {
+            alert("No records to export!");
+            return;
+        }
+
+        const headers = ["Student ID", "Name", "Subject", "Teacher", "Date", "Time", "Day", "Is Late", "Latitude", "Longitude"];
+        const csvRows = logs.map(log => [
+            log.studentId,
+            `"${log.studentName}"`,
+            `"${log.period}"`,
+            `"${log.teacher}"`,
+            log.fullDate,
+            log.time,
+            log.day,
+            log.isLate ? "YES" : "NO",
+            log.location?.lat || "N/A",
+            log.location?.lng || "N/A"
+        ].join(","));
+
+        const csvContent = [headers.join(","), ...csvRows].join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Attendance_Report_${new Date().toLocaleDateString()}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const getStatusColor = (percentage) => {
@@ -36,26 +72,38 @@ export default function Dashboard() {
                     <ArrowLeft className="w-5 h-5 text-zinc-300" />
                 </button>
                 <h2 className="text-xl font-bold text-white tracking-tight">Analytics</h2>
-                <button onClick={handleClear} className="p-2 bg-rose-500/10 rounded-full hover:bg-rose-500/20 transition group">
-                    <Trash2 className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
-                </button>
+                <div className="flex items-center space-x-2">
+                    <button onClick={handleExport} className="p-2 bg-emerald-500/10 rounded-full hover:bg-emerald-500/20 transition group border border-emerald-500/20">
+                        <Download className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" />
+                    </button>
+                    <button onClick={handleClear} className="p-2 bg-rose-500/10 rounded-full hover:bg-rose-500/20 transition group">
+                        <Trash2 className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
+                    </button>
+                </div>
             </div>
 
             {/* Toggle Switch */}
             <div className="flex bg-zinc-900/80 rounded-2xl p-1 mb-6 border border-zinc-800 mx-1">
                 <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-xs font-bold rounded-xl transition-all ${viewMode === 'recent' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'recent' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
                     onClick={() => setViewMode('recent')}
                 >
-                    <List className="w-4 h-4" />
-                    <span>RECENT LOGS</span>
+                    <List className="w-3.5 h-3.5" />
+                    <span>LOGS</span>
                 </button>
                 <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-xs font-bold rounded-xl transition-all ${viewMode === 'stats' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'stats' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
                     onClick={() => setViewMode('stats')}
                 >
-                    <PieChart className="w-4 h-4" />
-                    <span>STATISTICS</span>
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>STATS</span>
+                </button>
+                <button 
+                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'charts' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    onClick={() => setViewMode('charts')}
+                >
+                    <BarChart3 className="w-3.5 h-3.5" />
+                    <span>REPORT</span>
                 </button>
             </div>
 
@@ -83,12 +131,15 @@ export default function Dashboard() {
                                     </div>
                                 </div>
 
-                                <div className="flex space-x-5 border-t border-zinc-800/80 pt-4">
+                                <div className="flex flex-wrap gap-4 border-t border-zinc-800/80 pt-4">
                                     <div className="flex items-center space-x-2 text-zinc-400">
                                         <div className="p-1.5 bg-zinc-800 rounded-lg">
                                             <Clock className="w-3.5 h-3.5 text-zinc-500" />
                                         </div>
                                         <span className="text-xs font-semibold">{log.time}</span>
+                                        {log.isLate && (
+                                            <span className="ml-1 bg-rose-500/10 text-rose-500 text-[9px] font-black px-2 py-0.5 rounded-full border border-rose-500/20">LATE</span>
+                                        )}
                                     </div>
                                     <div className="flex items-center space-x-2 text-zinc-400">
                                         <div className="p-1.5 bg-zinc-800 rounded-lg">
@@ -96,11 +147,24 @@ export default function Dashboard() {
                                         </div>
                                         <span className="text-xs font-semibold">{log.day}</span>
                                     </div>
+                                    {log.location && (
+                                        <a 
+                                            href={`https://www.google.com/maps?q=${log.location.lat},${log.location.lng}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center space-x-2 text-emerald-400 hover:text-emerald-300 transition"
+                                        >
+                                            <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                                                <MapPin className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold">Map</span>
+                                        </a>
+                                    )}
                                 </div>
                             </div>
                         ))
                     )
-                ) : (
+                ) : viewMode === 'stats' ? (
                     stats.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
                             <AlertCircle className="w-12 h-12 mb-4 text-zinc-600" />
@@ -156,6 +220,112 @@ export default function Dashboard() {
                             </div>
                         </div>
                     )
+                ) : (
+                    /* Graphical Reports View */
+                    <div className="space-y-6 pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {stats.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
+                                <AlertCircle className="w-12 h-12 mb-4 text-zinc-600" />
+                                <p className="text-lg font-semibold">No data for reports</p>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Bar Chart: Attendance % per Student */}
+                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <div className="p-2 bg-indigo-500/10 rounded-xl">
+                                            <TrendingUp className="w-5 h-5 text-indigo-400" />
+                                        </div>
+                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Attendance % per Student</h3>
+                                    </div>
+                                    <div className="h-64 w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={stats}>
+                                                <XAxis dataKey="studentName" hide />
+                                                <YAxis domain={[0, 100]} hide />
+                                                <Tooltip 
+                                                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
+                                                    itemStyle={{ color: '#818cf8', fontWeight: 'bold' }}
+                                                />
+                                                <Bar dataKey="percentage" radius={[4, 4, 0, 0]}>
+                                                    {stats.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={entry.percentage >= 75 ? '#10b981' : entry.percentage >= 50 ? '#f59e0b' : '#f43f5e'} />
+                                                    ))}
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                    <div className="flex justify-between mt-4 px-2">
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                                            <span className="text-[9px] font-bold text-zinc-500 tracking-tighter">GOOD (75%+)</span>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                                            <span className="text-[9px] font-bold text-zinc-500 tracking-tighter">AVERAGE</span>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
+                                            <span className="text-[9px] font-bold text-zinc-500 tracking-tighter">LOW</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Pie Chart: Late vs On-time Ratio */}
+                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <div className="p-2 bg-emerald-500/10 rounded-xl">
+                                            <PieChart className="w-5 h-5 text-emerald-400" />
+                                        </div>
+                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Entry Performance</h3>
+                                    </div>
+                                    <div className="h-64 w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <RePieChart>
+                                                <Pie
+                                                    data={[
+                                                        { name: 'On-time', value: logs.filter(l => !l.isLate).length },
+                                                        { name: 'Late', value: logs.filter(l => l.isLate).length }
+                                                    ]}
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    innerRadius={60}
+                                                    outerRadius={80}
+                                                    paddingAngle={5}
+                                                    dataKey="value"
+                                                >
+                                                    <Cell fill="#10b981" />
+                                                    <Cell fill="#f43f5e" />
+                                                </Pie>
+                                                <Tooltip 
+                                                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
+                                                />
+                                                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingTop: '20px' }} />
+                                            </RePieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                {/* Class Distribution */}
+                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <div className="p-2 bg-amber-500/10 rounded-xl">
+                                            <Landmark className="w-5 h-5 text-amber-400" />
+                                        </div>
+                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Subject Logs Summary</h3>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {Array.from(new Set(logs.map(l => l.period))).map(period => (
+                                            <div key={period} className="flex items-center justify-between bg-zinc-950/50 p-3 rounded-2xl border border-zinc-800">
+                                                <span className="text-xs font-bold text-zinc-300">{period}</span>
+                                                <span className="text-xs font-black text-indigo-400">{logs.filter(l => l.period === period).length} Logs</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 )}
             </div>
         </div>

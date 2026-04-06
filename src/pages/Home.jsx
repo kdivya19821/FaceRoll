@@ -1,11 +1,16 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Scan, Users, BookOpenCheck, Settings, LogOut } from 'lucide-react';
-import { getCurrentTeacher, logout } from '../utils/storage';
+import { Scan, Users, BookOpenCheck, Settings, LogOut, GraduationCap, CalendarCheck } from 'lucide-react';
+import { getCurrentTeacher, logout, getStudents, getLogs } from '../utils/storage';
 
 export default function Home() {
     const navigate = useNavigate();
     const teacher = getCurrentTeacher();
+    const students = getStudents();
+    const logs = getLogs();
+    const today = new Date().toDateString();
+    const todayLogs = logs.filter(l => l.fullDate === today);
+    const uniquePresentToday = new Set(todayLogs.map(l => l.studentId)).size;
 
     const handleLogout = () => {
         logout();
@@ -33,6 +38,24 @@ export default function Home() {
                     FaceRoll
                 </h1>
                 <p className="text-indigo-400 font-bold uppercase tracking-[0.2em] text-[10px]">Smart Bio-Attendance</p>
+            </div>
+
+            {/* Quick Stats Banner */}
+            <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-3xl shadow-lg relative overflow-hidden group">
+                    <div className="absolute -right-2 -top-2 text-violet-500/10 group-hover:text-violet-500/20 transition-colors">
+                        <GraduationCap className="w-16 h-16" />
+                    </div>
+                    <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1 relative z-10">Total Students</p>
+                    <p className="text-2xl font-black text-white relative z-10">{students.length}</p>
+                </div>
+                <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-3xl shadow-lg relative overflow-hidden group">
+                    <div className="absolute -right-2 -top-2 text-emerald-500/10 group-hover:text-emerald-500/20 transition-colors">
+                        <CalendarCheck className="w-16 h-16" />
+                    </div>
+                    <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1 relative z-10">Present Today</p>
+                    <p className="text-2xl font-black text-emerald-400 relative z-10">{uniquePresentToday}</p>
+                </div>
             </div>
 
             <div className="w-full space-y-3">
@@ -63,6 +86,16 @@ export default function Home() {
                     <div className="flex items-center space-x-4">
                         <Settings className="w-5 h-5 text-orange-400" />
                         <span className="font-semibold text-zinc-200">Manage Subjects</span>
+                    </div>
+                </Link>
+
+                <Link
+                    to="/students"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-zinc-800/80 border border-zinc-500/20 hover:bg-zinc-800 hover:border-zinc-500/50 hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                    <div className="flex items-center space-x-4">
+                        <Users className="w-5 h-5 text-violet-400" />
+                        <span className="font-semibold text-zinc-200">Manage Students</span>
                     </div>
                 </Link>
 
