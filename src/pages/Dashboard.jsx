@@ -9,16 +9,20 @@ import {
 
 export default function Dashboard() {
     const navigate = useNavigate();
+    const [viewMode, setViewMode] = useState('recent'); // 'recent' or 'stats'
+    const [logs, setLogs] = useState(getLogs().reverse());
     const [timeframe, setTimeframe] = useState('all'); // 'all', 'weekly', 'monthly'
-    const stats = getAttendanceStats(timeframe);
-
-    const filteredLogsForCharts = timeframe === 'all' ? logs : logs.filter(log => {
+    
+    // Filtered logs based on selected timeframe
+    const filteredLogs = timeframe === 'all' ? logs : logs.filter(log => {
         const logDate = new Date(log.timestamp || log.fullDate);
         const now = new Date();
         const days = timeframe === 'weekly' ? 7 : 30;
         const cutoff = new Date(now.setDate(now.getDate() - days));
         return logDate >= cutoff;
     });
+
+    const stats = getAttendanceStats(timeframe);
 
     const handleClear = () => {
         if (confirm('Are you sure you want to delete all attendance records? This cannot be undone.')) {
@@ -89,6 +93,23 @@ export default function Dashboard() {
                 </div>
             </div>
 
+            {/* Global Timeframe Selector */}
+            <div className="flex space-x-2 mb-6 px-1">
+                {['all', 'monthly', 'weekly'].map((tf) => (
+                    <button
+                        key={tf}
+                        onClick={() => setTimeframe(tf)}
+                        className={`flex-1 py-3 px-3 text-[10px] font-black rounded-2xl border transition-all duration-300 ${
+                            timeframe === tf
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-xl shadow-emerald-500/5'
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                        }`}
+                    >
+                        {tf === 'all' ? 'OVERALL' : tf === 'monthly' ? 'THIS MONTH' : 'THIS WEEK'}
+                    </button>
+                ))}
+            </div>
+
             {/* Toggle Switch */}
             <div className="flex bg-zinc-900/80 rounded-2xl p-1 mb-6 border border-zinc-800 mx-1">
                 <button 
@@ -113,34 +134,15 @@ export default function Dashboard() {
                 </button>
             </div>
 
-            {/* Timeframe Selector (Only for Stats/Charts) */}
-            {(viewMode === 'stats' || viewMode === 'charts') && (
-                <div className="flex space-x-2 mb-6 px-1">
-                    {['all', 'monthly', 'weekly'].map((tf) => (
-                        <button
-                            key={tf}
-                            onClick={() => setTimeframe(tf)}
-                            className={`flex-1 py-2 px-3 text-[10px] font-bold rounded-xl border transition-all ${
-                                timeframe === tf
-                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-lg shadow-emerald-500/5'
-                                    : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-400'
-                            }`}
-                        >
-                            {tf === 'all' ? 'OVERALL' : tf === 'monthly' ? 'THIS MONTH' : 'THIS WEEK'}
-                        </button>
-                    ))}
-                </div>
-            )}
-
             <div className="flex-1 overflow-y-auto px-1 pb-10 scrollbar-hide">
                 {viewMode === 'recent' ? (
-                    logs.length === 0 ? (
+                    filteredLogs.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center opacity-40">
                             <BookOpen className="w-12 h-12 mb-4 text-zinc-600" />
-                            <p className="text-lg font-semibold">No recent activity</p>
+                            <p className="text-lg font-semibold text-center">No activity for<br/>{timeframe === 'all' ? 'this period' : timeframe}</p>
                         </div>
                     ) : (
-                        logs.map((log, index) => (
+                        filteredLogs.map((log, index) => (
                             <div key={index} className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 shadow-xl mb-4 animate-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${index * 50}ms` }}>
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="space-y-0.5">
@@ -309,8 +311,8 @@ export default function Dashboard() {
                                             <RePieChart>
                                                 <Pie
                                                     data={[
-                                                        { name: 'On-time', value: filteredLogsForCharts.filter(l => !l.isLate).length },
-                                                        { name: 'Late', value: filteredLogsForCharts.filter(l => l.isLate).length }
+                                                        { name: 'On-time', value: filteredLogs.filter(l => !l.isLate).length },
+                                                        { name: 'Late', value: filteredLogs.filter(l => l.isLate).length }
                                                     ]}
                                                     cx="50%"
                                                     cy="50%"
@@ -340,10 +342,10 @@ export default function Dashboard() {
                                         <h3 className="text-sm font-black text-white uppercase tracking-widest">Subject Logs Summary</h3>
                                     </div>
                                     <div className="space-y-4">
-                                        {Array.from(new Set(filteredLogsForCharts.map(l => l.period))).map(period => (
+                                        {Array.from(new Set(filteredLogs.map(l => l.period))).map(period => (
                                             <div key={period} className="flex items-center justify-between bg-zinc-950/50 p-3 rounded-2xl border border-zinc-800">
                                                 <span className="text-xs font-bold text-zinc-300">{period}</span>
-                                                <span className="text-xs font-black text-indigo-400">{filteredLogsForCharts.filter(l => l.period === period).length} Logs</span>
+                                                <span className="text-xs font-black text-indigo-400">{filteredLogs.filter(l => l.period === period).length} Logs</span>
                                             </div>
                                         ))}
                                     </div>
