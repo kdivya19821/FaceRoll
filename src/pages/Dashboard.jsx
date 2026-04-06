@@ -100,25 +100,22 @@ export default function Dashboard() {
 
             {/* Global Timeframe Selector */}
             <div className="flex space-x-2 mb-6 px-1">
-                {[
-                    { id: 'all', label: 'OVERALL', color: 'indigo' },
-                    { id: 'monthly', label: 'THIS MONTH', color: 'amber' },
-                    { id: 'weekly', label: 'THIS WEEK', color: 'emerald' }
-                ].map((tf) => {
-                    const isActive = timeframe === tf.id;
-                    const colors = {
-                        indigo: isActive ? 'bg-indigo-500 border-indigo-500 text-white shadow-indigo-500/20' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-indigo-400',
-                        amber: isActive ? 'bg-amber-500 border-amber-500 text-black shadow-amber-500/20' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-amber-400',
-                        emerald: isActive ? 'bg-emerald-500 border-emerald-500 text-black shadow-emerald-500/20' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-emerald-400'
-                    };
+                {['all', 'monthly', 'weekly'].map((tf) => {
+                    let activeColors = 'bg-emerald-500 border-emerald-500 text-black shadow-xl shadow-emerald-500/20';
+                    if (tf === 'monthly') activeColors = 'bg-amber-500 border-amber-500 text-black shadow-xl shadow-amber-500/20';
+                    if (tf === 'weekly') activeColors = 'bg-cyan-500 border-cyan-500 text-black shadow-xl shadow-cyan-500/20';
                     
                     return (
                         <button
-                            key={tf.id}
-                            onClick={() => setTimeframe(tf.id)}
-                            className={`flex-1 py-3 px-3 text-[10px] font-black rounded-2xl border transition-all duration-300 shadow-xl ${colors[tf.color]}`}
+                            key={tf}
+                            onClick={() => setTimeframe(tf)}
+                            className={`flex-1 py-3 px-3 text-[10px] font-black rounded-2xl border transition-all duration-300 ${
+                                timeframe === tf
+                                    ? activeColors
+                                    : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                            }`}
                         >
-                            {tf.label}
+                            {tf === 'all' ? 'OVERALL' : tf === 'monthly' ? 'THIS MONTH' : 'THIS WEEK'}
                         </button>
                     );
                 })}
@@ -127,11 +124,11 @@ export default function Dashboard() {
             {/* Dynamic Timeframe Heading */}
             <div className="flex items-center space-x-3 mb-4 px-2">
                 <div className={`h-6 w-1 rounded-full ${
-                    timeframe === 'all' ? 'bg-indigo-500' : timeframe === 'monthly' ? 'bg-amber-500' : 'bg-emerald-500'
+                    timeframe === 'all' ? 'bg-emerald-500' :
+                    timeframe === 'monthly' ? 'bg-amber-500' :
+                    'bg-cyan-500'
                 }`}></div>
-                <h3 className={`text-sm font-black uppercase tracking-widest ${
-                    timeframe === 'all' ? 'text-indigo-400' : timeframe === 'monthly' ? 'text-amber-400' : 'text-emerald-400'
-                }`}>
+                <h3 className="text-sm font-black text-white uppercase tracking-widest">
                     {timeframe === 'all' ? 'Overall Attendance' : timeframe === 'monthly' ? 'Monthly Report' : 'Weekly Summary'}
                 </h3>
             </div>

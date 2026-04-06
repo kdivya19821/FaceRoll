@@ -7,13 +7,18 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Subjects from './pages/Subjects';
 import Students from './pages/Students';
-import { getCurrentTeacher } from './utils/storage';
+import { getCurrentTeacher, login } from './utils/storage';
 
 const ProtectedRoute = ({ children }) => {
-  return getCurrentTeacher() ? children : <Navigate to="/login" replace />;
+  return children; // Always allow access
 };
 
 function App() {
+  React.useEffect(() => {
+    if (!getCurrentTeacher()) {
+      login('Admin');
+    }
+  }, []);
   return (
     <Router>
       <div className="w-full min-h-screen bg-zinc-950 text-white font-sans selection:bg-indigo-500/30">
