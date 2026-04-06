@@ -9,18 +9,23 @@ import {
 
 export default function Dashboard() {
     const navigate = useNavigate();
+    const teacher = getCurrentTeacher();
     const [viewMode, setViewMode] = useState('recent'); // 'recent' or 'stats'
-    const [logs, setLogs] = useState(getLogs().reverse());
+    const [logs, setLogs] = useState(getLogs().filter(l => l.teacher === teacher).reverse());
     const [timeframe, setTimeframe] = useState('all'); // 'all', 'weekly', 'monthly'
     
+    // Calculate cutoff date once outside the loop
+    const now = new Date();
+    const days = timeframe === 'weekly' ? 7 : timeframe === 'monthly' ? 30 : 0;
+    const cutoffDate = timeframe !== 'all' ? new Date(now.setDate(now.getDate() - days)) : null;
+
     // Filtered logs based on selected timeframe
-    const filteredLogs = timeframe === 'all' ? logs : logs.filter(log => {
-        const logDate = new Date(log.timestamp || log.fullDate);
-        const now = new Date();
-        const days = timeframe === 'weekly' ? 7 : 30;
-        const cutoff = new Date(now.setDate(now.getDate() - days));
-        return logDate >= cutoff;
-    });
+    const filteredLogs = timeframe === 'all' 
+        ? logs 
+        : logs.filter(log => {
+            const logDate = new Date(log.timestamp || log.fullDate);
+            return logDate >= cutoffDate;
+        });
 
     const stats = getAttendanceStats(timeframe);
 
@@ -137,9 +142,10 @@ export default function Dashboard() {
             <div className="flex-1 overflow-y-auto px-1 pb-10 scrollbar-hide">
                 {viewMode === 'recent' ? (
                     filteredLogs.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center opacity-40">
+                        <div className="h-full flex flex-col items-center justify-center opacity-40 px-10 text-center">
                             <BookOpen className="w-12 h-12 mb-4 text-zinc-600" />
-                            <p className="text-lg font-semibold text-center">No activity for<br/>{timeframe === 'all' ? 'this period' : timeframe}</p>
+                            <p className="text-lg font-semibold">No records found for<br/>{teacher || 'Unknown Teacher'}</p>
+                            <p className="text-xs text-zinc-500 mt-1">{timeframe === 'all' ? 'Start marking attendance to see logs here.' : `No activity in the last ${timeframe === 'weekly' ? '7' : '30'} days.`}</p>
                         </div>
                     ) : (
                         filteredLogs.map((log, index) => (
