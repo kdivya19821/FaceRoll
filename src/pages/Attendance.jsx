@@ -39,7 +39,7 @@ export default function Attendance() {
             }
 
             if (labeledDescriptors.length > 0) {
-                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.75);
+                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.55);
                 setRegisteredCount(labeledDescriptors.length);
             } else {
                 setRegisteredCount(0);
