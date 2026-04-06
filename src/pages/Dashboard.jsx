@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, Clock, BookOpen, Trash2, PieChart, List, UserCheck, AlertCircle, BarChart3, MapPin, TrendingUp, Landmark, Download } from 'lucide-react';
-import { getLogs, clearLogs, getAttendanceStats } from '../utils/storage';
+import { getLogs, clearLogs, getAttendanceStats, getCurrentTeacher } from '../utils/storage';
 import { 
     ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, 
     Cell, PieChart as RePieChart, Pie, Legend 
