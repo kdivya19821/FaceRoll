@@ -157,18 +157,29 @@ export function getFaceDescriptors() {
     return faces ? JSON.parse(faces) : {};
 }
 
-export function getAttendanceStats() {
+export function getAttendanceStats(timeframe = 'all') {
     const logs = getLogs();
     const teacher = getCurrentTeacher();
     if (!teacher) return [];
 
     // Filter logs for this teacher
-    const teacherLogs = logs.filter(l => l.teacher === teacher);
+    let filteredLogs = logs.filter(l => l.teacher === teacher);
 
-    // Identify unique sessions for this teacher per subject/period
-    // A session is unique by (subject + fullDate)
+    // Filter by timeframe
+    if (timeframe !== 'all') {
+        const now = new Date();
+        const daysToFilter = timeframe === 'weekly' ? 7 : 30;
+        const cutoffDate = new Date(now.setDate(now.getDate() - daysToFilter));
+        
+        filteredLogs = filteredLogs.filter(log => {
+            const logDate = new Date(log.timestamp || log.fullDate);
+            return logDate >= cutoffDate;
+        });
+    }
+
+    // Identify unique sessions for this teacher per subject/period in the filtered timeframe
     const sessionsBySubject = {};
-    teacherLogs.forEach(log => {
+    filteredLogs.forEach(log => {
         if (!sessionsBySubject[log.period]) {
             sessionsBySubject[log.period] = new Set();
         }
@@ -176,14 +187,14 @@ export function getAttendanceStats() {
     });
 
     const stats = {};
-    teacherLogs.forEach(log => {
+    filteredLogs.forEach(log => {
         const key = `${log.studentId}-${log.period}`;
         if (!stats[key]) {
             stats[key] = {
                 studentId: log.studentId,
                 studentName: log.studentName,
                 subject: log.period,
-                attended: new Set(), // use set to avoid double-counting same student in same session
+                attended: new Set(),
                 lateCount: 0,
                 total: sessionsBySubject[log.period].size
             };
@@ -192,7 +203,6 @@ export function getAttendanceStats() {
         if (log.isLate) stats[key].lateCount += 1;
     });
 
-    // Convert sets to numbers and flatten
     return Object.values(stats).map(s => ({
         ...s,
         attended: s.attended.size,
