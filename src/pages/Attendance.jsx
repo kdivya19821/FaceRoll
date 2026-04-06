@@ -39,7 +39,7 @@ export default function Attendance() {
             }
 
             if (labeledDescriptors.length > 0) {
-                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.65);
+                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.75);
                 setRegisteredCount(labeledDescriptors.length);
             } else {
                 setRegisteredCount(0);
@@ -74,10 +74,11 @@ export default function Attendance() {
                 
                 // Draw detection box and results for every face
                 const isUnknown = bestMatch.label === 'unknown';
+                const confidence = Math.round((1 - bestMatch.distance) * 100);
                 const labelColor = isUnknown ? '#ef4444' : '#10b981'; // Red for unknown, Emerald for match
                 
                 const drawBox = new faceapi.draw.DrawBox(box, { 
-                    label: isUnknown ? 'Unknown' : bestMatch.label,
+                    label: isUnknown ? `Unknown (${confidence}%)` : `${bestMatch.label} (${confidence}%)`,
                     boxColor: labelColor,
                     drawLabel: true
                 });

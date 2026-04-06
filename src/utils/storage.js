@@ -12,7 +12,7 @@ const DEFAULT_STUDENTS = [
     { id: 5, name: 'Kusuma' },
     { id: 6, name: 'Sheetal' },
     { id: 7, name: 'Divya' },
-    { id: 8, name: 'saraa' },
+    { id: 8, name: 'saara' },
     { id: 9, name: 'Gowri' },
     { id: 10, name: 'IfthazNoor' }
 ];
@@ -133,8 +133,8 @@ export function getLogs() {
 
 export function saveLog(logData) {
     const logs = getLogs();
-    logs.push({ 
-        ...logData, 
+    logs.push({
+        ...logData,
         timestamp: new Date().toISOString(),
         location: logData.location || null, // Capture Geo-tag
         isLate: logData.isLate || false     // Late status
@@ -164,7 +164,7 @@ export function getAttendanceStats() {
 
     // Filter logs for this teacher
     const teacherLogs = logs.filter(l => l.teacher === teacher);
-    
+
     // Identify unique sessions for this teacher per subject/period
     // A session is unique by (subject + fullDate)
     const sessionsBySubject = {};
