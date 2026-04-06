@@ -39,7 +39,7 @@ export default function Attendance() {
             }
 
             if (labeledDescriptors.length > 0) {
-                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.70);
+                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.60);
                 setRegisteredCount(labeledDescriptors.length);
             } else {
                 setRegisteredCount(0);
@@ -99,12 +99,16 @@ export default function Attendance() {
                         }
                     }
 
+                    const now = new Date();
+                    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const day = now.toLocaleDateString([], { weekday: 'long' });
+
                     const logData = {
                         studentName: student.name,
                         studentId: student.id,
                         period: selectedPeriod,
-                        teacher: getCurrentTeacher(),
-                        fullDate: new Date().toDateString(),
+                        teacher: getCurrentTeacher() || 'Unknown Teacher',
+                        fullDate: now.toDateString(),
                         time,
                         day,
                         isLate,
