@@ -40,7 +40,7 @@ export default function Login() {
             }
 
             if (labeledDescriptors.length > 0) {
-                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.55);
+                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.40);
                 setScanStatus('Scanner active. Look at the camera to login.');
             } else {
                 setScanStatus('No teacher faces registered. Please use manual login.');
