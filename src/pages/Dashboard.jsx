@@ -106,13 +106,21 @@ export default function Dashboard() {
                         onClick={() => setTimeframe(tf)}
                         className={`flex-1 py-3 px-3 text-[10px] font-black rounded-2xl border transition-all duration-300 ${
                             timeframe === tf
-                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-xl shadow-emerald-500/5'
+                                ? 'bg-emerald-500 border-emerald-500 text-black shadow-xl shadow-emerald-500/20'
                                 : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
                         }`}
                     >
                         {tf === 'all' ? 'OVERALL' : tf === 'monthly' ? 'THIS MONTH' : 'THIS WEEK'}
                     </button>
                 ))}
+            </div>
+
+            {/* Dynamic Timeframe Heading */}
+            <div className="flex items-center space-x-3 mb-4 px-2">
+                <div className="h-6 w-1 bg-emerald-500 rounded-full"></div>
+                <h3 className="text-sm font-black text-white uppercase tracking-widest">
+                    {timeframe === 'all' ? 'Overall Attendance' : timeframe === 'monthly' ? 'Monthly Report' : 'Weekly Summary'}
+                </h3>
             </div>
 
             {/* Toggle Switch */}
