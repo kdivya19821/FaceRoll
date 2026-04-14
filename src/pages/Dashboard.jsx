@@ -81,6 +81,22 @@ export default function Dashboard() {
         return 'bg-rose-500';
     };
 
+    const generateHeatmapData = (logsData, daysCount = 61) => {
+        const data = [];
+        const now = new Date();
+        for (let i = daysCount - 1; i >= 0; i--) {
+            const d = new Date(now);
+            d.setDate(d.getDate() - i);
+            const toDateStringStr = d.toDateString(); 
+            const count = logsData.filter(l => l.fullDate === toDateStringStr).length;
+            data.push({
+                date: toDateStringStr,
+                count
+            });
+        }
+        return data;
+    };
+
     return (
         <div className="flex flex-col h-[100dvh] bg-zinc-950 p-4 animate-in fade-in duration-300 overflow-hidden">
             <div className="flex items-center justify-between mb-6 px-2 mt-2">
@@ -281,6 +297,50 @@ export default function Dashboard() {
                             </div>
                         ) : (
                             <>
+                                {/* Activity Heatmap */}
+                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-500 delay-100">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                                            <Calendar className="w-5 h-5 text-emerald-400" />
+                                        </div>
+                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Activity Heatmap</h3>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap gap-1.5 justify-start">
+                                        {generateHeatmapData(logs, 61).map((day, idx) => {
+                                            let colorClass = 'bg-zinc-800';
+                                            if (day.count > 0 && day.count <= 2) colorClass = 'bg-emerald-500/30';
+                                            else if (day.count > 2 && day.count <= 6) colorClass = 'bg-emerald-500/60';
+                                            else if (day.count > 6) colorClass = 'bg-emerald-500';
+                                            
+                                            return (
+                                                <div 
+                                                    key={idx} 
+                                                    className={`w-3 h-3 rounded-sm ${colorClass} group relative cursor-pointer hover:ring-1 hover:ring-zinc-400 transition-all`}
+                                                >
+                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-[60]">
+                                                        <div className="bg-zinc-800 border border-zinc-700 text-white text-[9px] font-bold px-2 py-1 rounded shadow-xl whitespace-nowrap">
+                                                            {day.date} • <span className="text-emerald-400">{day.count} Logs</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    
+                                    <div className="flex justify-between mt-5 px-1 items-center">
+                                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Last 60 Days</span>
+                                        <div className="flex items-center space-x-1">
+                                            <span className="text-[9px] font-bold text-zinc-500 mr-1">LESS</span>
+                                            <div className="w-2.5 h-2.5 rounded-sm bg-zinc-800"></div>
+                                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/30"></div>
+                                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/60"></div>
+                                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div>
+                                            <span className="text-[9px] font-bold text-zinc-500 ml-1">MORE</span>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Bar Chart: Attendance % per Student */}
                                 <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
                                     <div className="flex items-center space-x-3 mb-6">

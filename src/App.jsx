@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Subjects from './pages/Subjects';
 import Students from './pages/Students';
+import ManualAttendance from './pages/ManualAttendance';
 import { getCurrentTeacher } from './utils/storage';
 
 const ProtectedRoute = ({ children }) => {
@@ -26,6 +27,7 @@ function App() {
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/subjects" element={<ProtectedRoute><Subjects /></ProtectedRoute>} />
             <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
+            <Route path="/manual-attendance" element={<ProtectedRoute><ManualAttendance /></ProtectedRoute>} />
           </Routes>
         </main>
       </div>

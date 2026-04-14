@@ -22,6 +22,8 @@ export default function Attendance() {
     const cameraRef = useRef(null);
     const faceMatcherRef = useRef(null);
     const scanningCooldownRef = useRef(false);
+    const scannedSessionIdsRef = useRef(new Set());
+    const pendingLivenessRef = useRef(new Map());
 
     useEffect(() => {
         async function init() {
@@ -65,42 +67,75 @@ export default function Attendance() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             // Loop through all detected faces
-            let matchedStudent = null;
+            let newlyMatchedStudents = [];
             let unrecognizedCount = 0;
 
             resizedDetections.forEach((detection, i) => {
                 const bestMatch = faceMatcherRef.current.findBestMatch(detections[i].descriptor);
                 const box = detection.detection.box;
                 
-                // Draw detection box and results for every face
+                // Initial box config
                 const isUnknown = bestMatch.label === 'unknown';
                 const confidence = Math.round((1 - bestMatch.distance) * 100);
-                const labelColor = isUnknown ? '#ef4444' : '#10b981'; // Red for unknown, Emerald for match
-                
-                const drawBox = new faceapi.draw.DrawBox(box, { 
-                    label: isUnknown ? `Unknown (${confidence}%)` : `${bestMatch.label} (${confidence}%)`,
-                    boxColor: labelColor,
-                    drawLabel: true
-                });
-                drawBox.draw(canvas);
+                let labelText = isUnknown ? `Unknown (${confidence}%)` : `${bestMatch.label} (${confidence}%)`;
+                let boxColorObj = isUnknown ? '#ef4444' : '#10b981'; 
 
-                if (!isUnknown && !matchedStudent && !scanningCooldownRef.current) {
-                    const student = getStudents().find(s => s.id.toString() === bestMatch.label);
-                    if (student) {
-                        matchedStudent = { student, bestMatch };
+                if (!isUnknown && !scanningCooldownRef.current) {
+                    const sId = bestMatch.label;
+                    if (!scannedSessionIdsRef.current.has(sId)) {
+                        // Anti-spoofing (Liveness) logic
+                        const mouth = detection.landmarks.getMouth();
+                        const topLip = mouth[14];
+                        const bottomLip = mouth[18];
+                        const mouthOpenDist = bottomLip.y - topLip.y;
+                        const faceHeight = box.height;
+                        const openRatio = mouthOpenDist / faceHeight;
+
+                        const leftCorner = mouth[0];
+                        const rightCorner = mouth[6];
+                        const mouthWidth = rightCorner.x - leftCorner.x;
+                        const widthRatio = mouthWidth / box.width;
+
+                        // Liveness confirmed if mouth is open or smiling wide
+                        const isLive = openRatio > 0.05 || widthRatio > 0.42;
+
+                        if (isLive) {
+                            const student = getStudents().find(s => s.id.toString() === sId);
+                            if (student) {
+                                newlyMatchedStudents.push(student);
+                                scannedSessionIdsRef.current.add(sId);
+                                pendingLivenessRef.current.delete(sId);
+                            }
+                            boxColorObj = '#10b981'; // Proceed to Green
+                        } else {
+                            // Waiting for Liveness
+                            boxColorObj = '#facc15'; // Yellow
+                            labelText = "Smile to confirm!";
+                            if (!pendingLivenessRef.current.has(sId)) {
+                                pendingLivenessRef.current.set(sId, true);
+                                if (voiceEnabled) speak("Please smile to confirm");
+                            }
+                        }
                     }
                 } else if (isUnknown) {
                     unrecognizedCount++;
                 }
+
+                // Draw dynamically updated box
+                const drawBox = new faceapi.draw.DrawBox(box, { 
+                    label: labelText,
+                    boxColor: boxColorObj,
+                    drawLabel: true
+                });
+                drawBox.draw(canvas);
             });
 
-            if (matchedStudent) {
-                const { student, bestMatch } = matchedStudent;
+            if (newlyMatchedStudents.length > 0) {
                 scanningCooldownRef.current = true;
 
                 const isLate = checkLateStatus(selectedPeriod);
                 
-                // Capture Location
+                // Capture Location once for batch
                 let location = null;
                 if ('geolocation' in navigator) {
                     try {
@@ -115,26 +150,35 @@ export default function Attendance() {
                 const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 const day = now.toLocaleDateString([], { weekday: 'long' });
 
-                const logData = {
-                    studentName: student.name,
-                    studentId: student.id,
-                    period: selectedPeriod,
-                    teacher: getCurrentTeacher() || 'Unknown Teacher',
-                    fullDate: now.toDateString(),
-                    time,
-                    day,
-                    isLate,
-                    location
-                };
+                const loggedStudents = [];
 
-                saveLog(logData);
-                setSuccessData(logData);
+                newlyMatchedStudents.forEach(student => {
+                    const logData = {
+                        studentName: student.name,
+                        studentId: student.id,
+                        period: selectedPeriod,
+                        teacher: getCurrentTeacher() || 'Unknown Teacher',
+                        fullDate: now.toDateString(),
+                        time,
+                        day,
+                        isLate,
+                        location
+                    };
+                    saveLog(logData);
+                    loggedStudents.push(logData);
+                });
+
+                setSuccessData(loggedStudents);
                 
                 if (voiceEnabled) {
-                    announceAttendance(student.name, isLate);
+                    if (loggedStudents.length === 1) {
+                        announceAttendance(loggedStudents[0].studentName, isLate);
+                    } else {
+                        speak(`${loggedStudents.length} students marked present`);
+                    }
                 }
 
-                setStatus(isLate ? `Late Entry: ${student.name}` : `Success: ${student.name} matched!`);
+                setStatus(isLate ? `Late Entry: ${loggedStudents.length} student(s)` : `Success: ${loggedStudents.length} student(s) matched!`);
 
                 setTimeout(() => {
                     setSuccessData(null);
@@ -174,6 +218,8 @@ export default function Attendance() {
                     value={selectedPeriod}
                     onChange={(e) => {
                         setSelectedPeriod(e.target.value);
+                        scannedSessionIdsRef.current.clear();
+                        pendingLivenessRef.current.clear();
                         if (e.target.value && faceMatcherRef.current) setStatus("Scanning...");
                     }}
                 >
@@ -194,32 +240,35 @@ export default function Attendance() {
                     <CameraView ref={cameraRef} onDraw={handleDraw} />
 
                     {successData && (
-                        <div className="absolute inset-0 bg-emerald-500/20 backdrop-blur-md flex flex-col items-center justify-center animate-in zoom-in duration-300 z-20">
-                            <div className="bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-emerald-500/30 text-center w-11/12">
-                                <CheckCircle2 className="w-16 h-16 text-emerald-400 mx-auto mb-4" />
-                                <h3 className="text-2xl font-bold text-white mb-1">{successData.studentName}</h3>
-                                <p className="text-zinc-400 font-medium mb-4">ID: #{successData.studentId}</p>
-                                <div className="bg-zinc-800/50 rounded-xl p-3 space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-sm text-zinc-300"><span className="text-emerald-400 font-bold">Class:</span> {successData.period}</p>
-                                        {successData.isLate && (
-                                            <span className="flex items-center space-x-1 bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-500/30">
-                                                <Clock3 className="w-3 h-3" />
-                                                <span>LATE</span>
-                                            </span>
-                                        )}
+                        <div className="absolute inset-0 bg-emerald-500/20 backdrop-blur-md flex flex-col items-center justify-center animate-in zoom-in duration-300 z-20 p-4">
+                            <div className="max-h-full w-full max-w-md overflow-y-auto space-y-4 scrollbar-hide py-10 flex flex-col justify-center">
+                                {successData.map(data => (
+                                    <div key={data.studentId} className="bg-zinc-900 rounded-3xl p-5 shadow-2xl border border-emerald-500/30 text-center w-full">
+                                        <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+                                        <h3 className="text-xl font-bold text-white mb-1">{data.studentName}</h3>
+                                        <p className="text-zinc-400 font-medium mb-3 text-sm">ID: #{data.studentId}</p>
+                                        <div className="bg-zinc-800/50 rounded-xl p-3 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs text-zinc-300"><span className="text-emerald-400 font-bold">Class:</span> {data.period}</p>
+                                                {data.isLate && (
+                                                    <span className="flex items-center space-x-1 bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-500/30">
+                                                        <Clock3 className="w-3 h-3" />
+                                                        <span>LATE</span>
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs text-zinc-300"><span className="text-emerald-400 font-bold">Time:</span> {data.time}</p>
+                                                {data.location && (
+                                                    <span className="flex items-center space-x-1 text-zinc-500 text-[9px]">
+                                                        <MapPin className="w-3 h-3 text-emerald-500" />
+                                                        <span>Location Captured</span>
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <p className="text-sm text-zinc-300"><span className="text-emerald-400 font-bold">Time:</span> {successData.time}</p>
-                                    <div className="flex items-center justify-between text-sm text-zinc-300">
-                                        <p><span className="text-emerald-400 font-bold">Day:</span> {successData.day}</p>
-                                        {successData.location && (
-                                            <span className="flex items-center space-x-1 text-zinc-500 text-[9px]">
-                                                <MapPin className="w-3 h-3 text-emerald-500" />
-                                                <span>Location Captured</span>
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
+                                ))}
                             </div>
                         </div>
                     )}
