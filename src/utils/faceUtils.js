@@ -11,7 +11,8 @@ export async function loadModels() {
             faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
             faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
             faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+            faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
         ]);
         isLoaded = true;
     } catch (error) {
@@ -26,6 +27,7 @@ export async function detectFaces(videoElement) {
     let detections = await faceapi
         .detectAllFaces(videoElement, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.4 }))
         .withFaceLandmarks()
+        .withFaceExpressions()
         .withFaceDescriptors();
 
     // Second try: TinyFaceDetector (Fast, light, great for mobile)
@@ -33,6 +35,7 @@ export async function detectFaces(videoElement) {
         detections = await faceapi
             .detectAllFaces(videoElement, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 }))
             .withFaceLandmarks()
+            .withFaceExpressions()
             .withFaceDescriptors();
     }
 

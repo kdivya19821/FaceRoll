@@ -74,30 +74,39 @@ export default function Attendance() {
                 const bestMatch = faceMatcherRef.current.findBestMatch(detections[i].descriptor);
                 const box = detection.detection.box;
                 
+                // Extract dominant emotion
+                let emotionStr = "";
+                if (detection.expressions) {
+                    const topEmotion = Object.entries(detection.expressions).reduce((prev, curr) => curr[1] > prev[1] ? curr : prev);
+                    emotionStr = topEmotion[0].charAt(0).toUpperCase() + topEmotion[0].slice(1);
+                }
+
                 // Initial box config
                 const isUnknown = bestMatch.label === 'unknown';
                 const confidence = Math.round((1 - bestMatch.distance) * 100);
-                let labelText = isUnknown ? `Unknown (${confidence}%)` : `${bestMatch.label} (${confidence}%)`;
+                let labelText = isUnknown ? `Unknown (${confidence}%)` : `${bestMatch.label} (${confidence}%) ${emotionStr ? '- ' + emotionStr : ''}`;
                 let boxColorObj = isUnknown ? '#ef4444' : '#10b981'; 
 
                 if (!isUnknown && !scanningCooldownRef.current) {
                     const sId = bestMatch.label;
                     if (!scannedSessionIdsRef.current.has(sId)) {
-                        // Anti-spoofing (Liveness) logic
-                        const mouth = detection.landmarks.getMouth();
-                        const topLip = mouth[14];
-                        const bottomLip = mouth[18];
-                        const mouthOpenDist = bottomLip.y - topLip.y;
-                        const faceHeight = box.height;
-                        const openRatio = mouthOpenDist / faceHeight;
+                        // Anti-spoofing (Liveness) logic using Eye Aspect Ratio (EAR) for Blink Detection
+                        const leftEye = detection.landmarks.getLeftEye();
+                        const rightEye = detection.landmarks.getRightEye();
 
-                        const leftCorner = mouth[0];
-                        const rightCorner = mouth[6];
-                        const mouthWidth = rightCorner.x - leftCorner.x;
-                        const widthRatio = mouthWidth / box.width;
+                        const getEAR = (eye) => {
+                            const v1 = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y);
+                            const v2 = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
+                            const h = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y);
+                            return (v1 + v2) / (2.0 * h);
+                        };
 
-                        // Liveness confirmed if mouth is open or smiling wide
-                        const isLive = openRatio > 0.05 || widthRatio > 0.42;
+                        const leftEAR = getEAR(leftEye);
+                        const rightEAR = getEAR(rightEye);
+                        const averageEAR = (leftEAR + rightEAR) / 2.0;
+
+                        // Liveness confirmed if eyes are closed (blink)
+                        const isLive = averageEAR < 0.26;
 
                         if (isLive) {
                             const student = getStudents().find(s => s.id.toString() === sId);
@@ -110,10 +119,10 @@ export default function Attendance() {
                         } else {
                             // Waiting for Liveness
                             boxColorObj = '#facc15'; // Yellow
-                            labelText = "Smile to confirm!";
+                            labelText = `Blink to confirm! ${emotionStr ? '[' + emotionStr + ']' : ''}`;
                             if (!pendingLivenessRef.current.has(sId)) {
                                 pendingLivenessRef.current.set(sId, true);
-                                if (voiceEnabled) speak("Please smile to confirm");
+                                if (voiceEnabled) speak("Please blink to confirm");
                             }
                         }
                     }
