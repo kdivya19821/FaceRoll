@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import * as faceapi from '@vladmandic/face-api';
 import { ScanFace, LogIn, BookOpen } from 'lucide-react';
 import { login, getCurrentTeacher, TEACHER_SUBJECTS, getTeacherFaceDescriptors } from '../utils/storage';
@@ -166,11 +166,21 @@ export default function Login() {
                 <button
                     type="submit"
                     disabled={!selectedTeacher || autoLoginTriggered.current}
-                    className="w-full flex items-center justify-center space-x-3 p-4 rounded-[2rem] bg-white text-black font-bold hover:bg-zinc-200 active:scale-95 transition-all shadow-xl shadow-white/10 disabled:opacity-50 disabled:active:scale-100"
+                    className="w-full flex items-center justify-center space-x-3 p-4 rounded-[2rem] bg-white text-black font-bold hover:bg-zinc-200 active:scale-95 transition-all shadow-xl shadow-white/10 disabled:opacity-50 disabled:active:scale-100 mb-4"
                 >
                     <span>Continue to Dashboard</span>
                     <LogIn className="w-5 h-5" />
                 </button>
+
+                <div className="mt-8 pt-6 border-t border-zinc-800 text-center space-y-4">
+                    <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest">Are you a student?</p>
+                    <Link 
+                        to="/student-login"
+                        className="inline-block w-full p-4 rounded-[2rem] bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-all shadow-lg"
+                    >
+                        Go to Student Portal &rarr;
+                    </Link>
+                </div>
             </form>
         </div>
     );

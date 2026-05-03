@@ -12,6 +12,8 @@
 FaceRoll is a **Progressive Web Application (PWA)** that leverages **Artificial Intelligence** and **Computer Vision** to automate student attendance. By utilizing high-accuracy face recognition models, it eliminates manual signatures and provides teachers with a sophisticated analytics dashboard.
 
 ## ✨ Advanced Features
+- 🎓 **Student Self-Service Portal**: Dedicated dashboard for students to login (via Face ID) and track their own attendance stats.
+- 📝 **Leave Management System**: Built-in system for students to request leaves and teachers to approve/reject them.
 - 🗣️ **Voice Announcements**: Audible confirmation of attendance ("Done! Attendance marked for [Name]").
 - 📊 **Graphical Analytics**: Visual Bar and Pie charts for attendance trends and performance.
 - 📍 **GPS Geo-Tagging**: Capture precise location (Lat/Lng) for every attendance entry.

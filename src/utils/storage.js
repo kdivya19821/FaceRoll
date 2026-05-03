@@ -131,13 +131,31 @@ export function getLogs() {
     return logs ? JSON.parse(logs) : [];
 }
 
-export function saveLog(logData) {
+async function generateHash(payload) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(JSON.stringify(payload));
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return '0x' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function saveLog(logData) {
     const logs = getLogs();
+    const payloadToHash = {
+        studentId: logData.studentId,
+        time: logData.time,
+        fullDate: logData.fullDate,
+        teacher: logData.teacher
+    };
+    
+    const txHash = await generateHash(payloadToHash);
+
     logs.push({
         ...logData,
         timestamp: new Date().toISOString(),
         location: logData.location || null, // Capture Geo-tag
-        isLate: logData.isLate || false     // Late status
+        isLate: logData.isLate || false,     // Late status
+        txHash: txHash
     });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
 }
@@ -233,4 +251,89 @@ export function removeTeacherFaceDescriptor(teacherName) {
     const faces = getTeacherFaceDescriptors();
     delete faces[teacherName];
     localStorage.setItem(TEACHER_FACE_DATA_KEY, JSON.stringify(faces));
+}
+
+// ========================================
+// STUDENT PORTAL LOGIC
+// ========================================
+
+const STUDENT_SESSION_KEY = 'smart_attendance_current_student';
+
+export function loginStudent(studentId) {
+    localStorage.setItem(STUDENT_SESSION_KEY, studentId.toString());
+}
+
+export function logoutStudent() {
+    localStorage.removeItem(STUDENT_SESSION_KEY);
+}
+
+export function getCurrentStudent() {
+    return localStorage.getItem(STUDENT_SESSION_KEY);
+}
+
+export function getStudentStats(studentId) {
+    const logs = getLogs();
+    const studentLogs = logs.filter(l => l.studentId.toString() === studentId.toString());
+    
+    // Identify unique sessions across all teachers for all subjects
+    const sessionsBySubject = {};
+    logs.forEach(log => {
+        if (!sessionsBySubject[log.period]) {
+            sessionsBySubject[log.period] = new Set();
+        }
+        sessionsBySubject[log.period].add(log.fullDate);
+    });
+
+    const stats = {};
+    studentLogs.forEach(log => {
+        if (!stats[log.period]) {
+            stats[log.period] = {
+                subject: log.period,
+                teacher: log.teacher,
+                attended: new Set(),
+                lateCount: 0,
+                total: sessionsBySubject[log.period] ? sessionsBySubject[log.period].size : 0
+            };
+        }
+        stats[log.period].attended.add(log.fullDate);
+        if (log.isLate) stats[log.period].lateCount += 1;
+    });
+
+    return Object.values(stats).map(s => ({
+        ...s,
+        attended: s.attended.size,
+        percentage: s.total > 0 ? Math.round((s.attended.size / s.total) * 100) : 0
+    }));
+}
+
+// ========================================
+// LEAVE MANAGEMENT LOGIC
+// ========================================
+
+const LEAVES_KEY = 'smart_attendance_leaves';
+
+export function getLeaves() {
+    const leaves = localStorage.getItem(LEAVES_KEY);
+    return leaves ? JSON.parse(leaves) : [];
+}
+
+export function submitLeave(studentId, date, reason) {
+    const leaves = getLeaves();
+    const newLeave = {
+        id: 'leave_' + Date.now(),
+        studentId: studentId.toString(),
+        date,
+        reason,
+        status: 'Pending', // Pending, Approved, Rejected
+        timestamp: new Date().toISOString()
+    };
+    leaves.push(newLeave);
+    localStorage.setItem(LEAVES_KEY, JSON.stringify(leaves));
+    return newLeave;
+}
+
+export function updateLeaveStatus(leaveId, status) {
+    const leaves = getLeaves();
+    const updated = leaves.map(l => l.id === leaveId ? { ...l, status } : l);
+    localStorage.setItem(LEAVES_KEY, JSON.stringify(updated));
 }

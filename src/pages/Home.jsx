@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Scan, Users, BookOpenCheck, Settings, LogOut, GraduationCap, CalendarCheck, ClipboardEdit } from 'lucide-react';
+import { Scan, Users, BookOpenCheck, Settings, LogOut, GraduationCap, CalendarCheck, ClipboardEdit, FileText } from 'lucide-react';
 import { getCurrentTeacher, logout, getStudents, getLogs } from '../utils/storage';
 
 export default function Home() {
@@ -111,11 +111,21 @@ export default function Home() {
 
                 <Link
                     to="/manual-attendance"
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/50 hover:scale-[1.02] active:scale-95 transition-all mb-4"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/50 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                     <div className="flex items-center space-x-4">
                         <ClipboardEdit className="w-5 h-5 text-amber-500" />
                         <span className="font-semibold text-amber-500">Manual Roster</span>
+                    </div>
+                </Link>
+
+                <Link
+                    to="/leaves"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 hover:border-rose-500/50 hover:scale-[1.02] active:scale-95 transition-all mb-4"
+                >
+                    <div className="flex items-center space-x-4">
+                        <FileText className="w-5 h-5 text-rose-400" />
+                        <span className="font-semibold text-rose-400">Leave Requests</span>
                     </div>
                 </Link>
             </div>

@@ -161,7 +161,7 @@ export default function Attendance() {
 
                 const loggedStudents = [];
 
-                newlyMatchedStudents.forEach(student => {
+                await Promise.all(newlyMatchedStudents.map(async (student) => {
                     const logData = {
                         studentName: student.name,
                         studentId: student.id,
@@ -173,9 +173,9 @@ export default function Attendance() {
                         isLate,
                         location
                     };
-                    saveLog(logData);
+                    await saveLog(logData);
                     loggedStudents.push(logData);
-                });
+                }));
 
                 setSuccessData(loggedStudents);
                 
