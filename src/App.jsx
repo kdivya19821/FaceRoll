@@ -11,6 +11,7 @@ import ManualAttendance from './pages/ManualAttendance';
 import LeaveRequests from './pages/LeaveRequests';
 import StudentLogin from './pages/StudentLogin';
 import StudentDashboard from './pages/StudentDashboard';
+import DatabaseViewer from './pages/DatabaseViewer';
 import { getCurrentTeacher, getCurrentStudent } from './utils/storage';
 
 const ProtectedRoute = ({ children }) => {
@@ -38,6 +39,7 @@ function App() {
             <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
             <Route path="/manual-attendance" element={<ProtectedRoute><ManualAttendance /></ProtectedRoute>} />
             <Route path="/leaves" element={<ProtectedRoute><LeaveRequests /></ProtectedRoute>} />
+            <Route path="/database" element={<DatabaseViewer />} />
           </Routes>
         </main>
       </div>
