@@ -43,9 +43,9 @@ export function removeStudent(studentId) {
 }
 
 export const TEACHER_SUBJECTS = {
-    'Ms.Soumya': ['AI', 'WebContentSystem Managemwnt'],
+    'Ms.Soumya': ['AI', 'Web Content System Management'],
     'Ms.Sujatha': ['FDS'],
-    'Ms.Selva Priya': ['PHPandMySQL']
+    'Ms.Selva Priya': ['PHP and MySQL']
 };
 
 /**
@@ -54,9 +54,9 @@ export const TEACHER_SUBJECTS = {
  */
 export const PERIOD_TIMINGS = {
     'AI': '09:00',
-    'WebContentSystem Managemwnt': '10:30',
+    'Web Content System Management': '10:30',
     'FDS': '11:45',
-    'PHPandMySQL': '14:00'
+    'PHP and MySQL': '14:00'
 };
 
 export function checkLateStatus(periodName) {
