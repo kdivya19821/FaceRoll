@@ -20,6 +20,7 @@ export default function Register() {
     const [status, setStatus] = useState('Select a person and face the camera');
     const [isFaceRegistered, setIsFaceRegistered] = useState(false);
     const cameraRef = useRef(null);
+    const lastScanTimeRef = useRef(0);
 
     useEffect(() => {
         loadModels().then(() => setLoading(false));
@@ -27,6 +28,12 @@ export default function Register() {
 
     const handleDraw = async (video, canvas) => {
         if (!video || !canvas) return;
+
+        // Skip frames: Only scan every 100ms
+        const nowMs = Date.now();
+        if (nowMs - lastScanTimeRef.current < 100) return;
+        lastScanTimeRef.current = nowMs;
+
         try {
             const detections = await detectFaces(video);
             if (!detections) return;

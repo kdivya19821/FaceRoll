@@ -23,17 +23,18 @@ export async function loadModels() {
 export async function detectFaces(videoElement) {
     if (!isLoaded) return null;
     
-    // First try: SSD Mobilenet (High accuracy, heavy)
+    // First try: TinyFaceDetector (EXTREMELY FAST, light, great for mobile & laptops)
+    // We use a balanced inputSize (320) for speed and accuracy.
     let detections = await faceapi
-        .detectAllFaces(videoElement, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.4 }))
+        .detectAllFaces(videoElement, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
         .withFaceLandmarks()
         .withFaceExpressions()
         .withFaceDescriptors();
 
-    // Second try: TinyFaceDetector (Fast, light, great for mobile)
+    // Second try: SSD Mobilenet (High accuracy fallback if Tiny fails to find a face)
     if (!detections || detections.length === 0) {
         detections = await faceapi
-            .detectAllFaces(videoElement, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 }))
+            .detectAllFaces(videoElement, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.4 }))
             .withFaceLandmarks()
             .withFaceExpressions()
             .withFaceDescriptors();

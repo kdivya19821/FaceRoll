@@ -24,6 +24,7 @@ export default function Attendance() {
     const scanningCooldownRef = useRef(false);
     const scannedSessionIdsRef = useRef(new Set());
     const pendingLivenessRef = useRef(new Map());
+    const lastScanTimeRef = useRef(0);
 
     useEffect(() => {
         async function init() {
@@ -41,7 +42,8 @@ export default function Attendance() {
             }
 
             if (labeledDescriptors.length > 0) {
-                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.40);
+                // Tightened threshold from 0.55 to 0.48 for better security
+                faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.48);
                 setRegisteredCount(labeledDescriptors.length);
             } else {
                 setRegisteredCount(0);
@@ -55,9 +57,20 @@ export default function Attendance() {
     const handleDraw = async (video, canvas) => {
         if (!video || !canvas || !selectedPeriod || scanningCooldownRef.current || !faceMatcherRef.current) return;
 
+        // Dynamic scan rate: 100ms normally, but 50ms if waiting for a blink
+        const isWaitingForBlink = pendingLivenessRef.current.size > 0;
+        const scanInterval = isWaitingForBlink ? 50 : 100;
+        
+        const nowMs = Date.now();
+        if (nowMs - lastScanTimeRef.current < scanInterval) return;
+        lastScanTimeRef.current = nowMs;
+
         try {
             const detections = await detectFaces(video);
             if (!detections || detections.length === 0) return;
+
+            // Safety check for video dimensions
+            if (!video.videoWidth || !video.videoHeight) return;
 
             const displaySize = { width: video.videoWidth, height: video.videoHeight };
             faceapi.matchDimensions(canvas, displaySize);
@@ -106,7 +119,8 @@ export default function Attendance() {
                         const averageEAR = (leftEAR + rightEAR) / 2.0;
 
                         // Liveness confirmed if eyes are closed (blink)
-                        const isLive = averageEAR < 0.26;
+                        // Balanced threshold at 0.28 (0.32 was too loose)
+                        const isLive = averageEAR < 0.28;
 
                         if (isLive) {
                             const student = getStudents().find(s => s.id.toString() === sId);
