@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, BookOpen, Trash2, PieChart, List, UserCheck, AlertCircle, BarChart3, MapPin, TrendingUp, Landmark, Download } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, BookOpen, Trash2, PieChart, List, UserCheck, AlertCircle, BarChart3, MapPin, TrendingUp, Landmark, Download, Database } from 'lucide-react';
 import { getLogs, clearLogs, getAttendanceStats, getCurrentTeacher } from '../utils/storage';
 import { 
     ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, 
@@ -105,10 +105,13 @@ export default function Dashboard() {
                 </button>
                 <h2 className="text-xl font-bold text-white tracking-tight">Analytics</h2>
                 <div className="flex items-center space-x-2">
+                    <button onClick={() => navigate('/database')} className="p-2 bg-indigo-500/10 rounded-full hover:bg-indigo-500/20 transition group border border-indigo-500/20">
+                        <Database className="w-5 h-5 text-indigo-500 group-hover:scale-110 transition-transform" />
+                    </button>
                     <button onClick={handleExport} className="p-2 bg-emerald-500/10 rounded-full hover:bg-emerald-500/20 transition group border border-emerald-500/20">
                         <Download className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" />
                     </button>
-                    <button onClick={handleClear} className="p-2 bg-rose-500/10 rounded-full hover:bg-rose-500/20 transition group">
+                    <button onClick={handleClear} className="p-2 bg-rose-500/10 rounded-full hover:bg-rose-500/20 transition group border border-rose-500/20">
                         <Trash2 className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
                     </button>
                 </div>
