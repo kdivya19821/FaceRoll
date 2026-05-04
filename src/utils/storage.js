@@ -93,15 +93,19 @@ export function getPeriods() {
     if (!teacher) return [];
 
     const key = PERIODS_KEY + '_' + teacher;
-    const periods = localStorage.getItem(key);
+    const periodsStr = localStorage.getItem(key);
+    let periods = periodsStr ? JSON.parse(periodsStr) : null;
 
-    if (!periods) {
-        // If this teacher has a predefined list in requirements, load it
+    if (!periods || periods.length === 0) {
+        // If no periods exist or the array is empty, load defaults
         const defaults = TEACHER_SUBJECTS[teacher] || [];
-        localStorage.setItem(key, JSON.stringify(defaults));
-        return defaults;
+        if (defaults.length > 0) {
+            localStorage.setItem(key, JSON.stringify(defaults));
+            return defaults;
+        }
     }
-    return JSON.parse(periods);
+    
+    return periods || [];
 }
 
 export function savePeriod(newPeriod) {
