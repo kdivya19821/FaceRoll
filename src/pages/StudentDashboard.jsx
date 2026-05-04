@@ -203,8 +203,9 @@ export default function StudentDashboard() {
                                     <div className="bg-zinc-800 px-2 py-1 rounded-lg border border-zinc-700 flex items-center space-x-1">
                                         <Calendar className="w-3 h-3 text-zinc-400" />
                                         <p className="text-[9px] font-black text-zinc-300 tracking-wider">
-                                            {log.day.substring(0,3)}, {log.fullDate.substring(4,10)}
+                                            {log.day ? log.day.substring(0,3) : 'N/A'}, {log.fullDate ? log.fullDate.substring(4,10) : 'N/A'}
                                         </p>
+
                                     </div>
                                 </div>
 
