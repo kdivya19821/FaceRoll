@@ -17,6 +17,34 @@ const DEFAULT_STUDENTS = [
     { id: 10, name: 'IfthazNoor' }
 ];
 
+// Helper to sync local data from backend
+async function syncFromBackend(endpoint, key, defaultData = null) {
+    try {
+        const res = await fetch(`/api/${endpoint}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (Object.keys(data).length > 0) {
+                localStorage.setItem(key, JSON.stringify(data));
+            }
+        }
+    } catch (e) {
+        console.error(`Failed to sync ${endpoint} from backend:`, e);
+        if (defaultData && !localStorage.getItem(key)) {
+            localStorage.setItem(key, JSON.stringify(defaultData));
+        }
+    }
+}
+
+// Initial Sync trigger (runs in background)
+setTimeout(() => {
+    syncFromBackend('students', STUDENT_LIST_KEY, DEFAULT_STUDENTS);
+    syncFromBackend('logs', STORAGE_KEY, []);
+    syncFromBackend('faces', FACE_DATA_KEY, {});
+    syncFromBackend('teacher-faces', TEACHER_FACE_DATA_KEY, {});
+    syncFromBackend('leaves', LEAVES_KEY, []);
+}, 1000);
+
+
 export function getStudents() {
     const list = localStorage.getItem(STUDENT_LIST_KEY);
     if (!list) {
@@ -35,11 +63,21 @@ export function saveStudent(student) {
         students.push(student);
     }
     localStorage.setItem(STUDENT_LIST_KEY, JSON.stringify(students));
+    
+    // Sync to backend
+    fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(student)
+    }).catch(e => console.error(e));
 }
 
 export function removeStudent(studentId) {
     const students = getStudents().filter(s => s.id !== studentId);
     localStorage.setItem(STUDENT_LIST_KEY, JSON.stringify(students));
+    
+    // Sync to backend
+    fetch(`/api/students/${studentId}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
 
 export const TEACHER_SUBJECTS = {
@@ -48,10 +86,6 @@ export const TEACHER_SUBJECTS = {
     'Ms.Selva Priya': ['PHP and MySQL']
 };
 
-/**
- * Default period start times for Late Entry detection.
- * (Adjust these based on actual class timings)
- */
 export const PERIOD_TIMINGS = {
     'AI': '09:00',
     'Web Content System Management': '10:30',
@@ -68,7 +102,6 @@ export function checkLateStatus(periodName) {
     const startObj = new Date();
     startObj.setHours(startHour, startMin, 0, 0);
 
-    // If current time is 15 minutes later than start time, mark as late.
     const lateThresholdMinutes = 15;
     const diffMs = now - startObj;
     const diffMins = diffMs / (1000 * 60);
@@ -78,6 +111,9 @@ export function checkLateStatus(periodName) {
 
 export function login(name) {
     localStorage.setItem(TEACHER_KEY, name.trim());
+    const teacher = name.trim();
+    // Sync periods for this teacher
+    syncFromBackend(`periods/${teacher}`, PERIODS_KEY + '_' + teacher);
 }
 
 export function logout() {
@@ -97,7 +133,6 @@ export function getPeriods() {
     let periods = periodsStr ? JSON.parse(periodsStr) : null;
 
     if (!periods || periods.length === 0) {
-        // If no periods exist or the array is empty, load defaults
         const defaults = TEACHER_SUBJECTS[teacher] || [];
         if (defaults.length > 0) {
             localStorage.setItem(key, JSON.stringify(defaults));
@@ -117,6 +152,12 @@ export function savePeriod(newPeriod) {
     if (newPeriod.trim().length > 0 && !periods.includes(newPeriod.trim())) {
         periods.push(newPeriod.trim());
         localStorage.setItem(key, JSON.stringify(periods));
+        
+        fetch(`/api/periods/${teacher}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ periodName: newPeriod.trim() })
+        }).catch(e => console.error(e));
     }
 }
 
@@ -128,6 +169,8 @@ export function removePeriod(periodName) {
     const periods = getPeriods();
     const updated = periods.filter(p => p !== periodName);
     localStorage.setItem(key, JSON.stringify(updated));
+    
+    fetch(`/api/periods/${teacher}/${periodName}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
 
 export function getLogs() {
@@ -154,24 +197,39 @@ export async function saveLog(logData) {
     
     const txHash = await generateHash(payloadToHash);
 
-    logs.push({
+    const finalLog = {
         ...logData,
         timestamp: new Date().toISOString(),
-        location: logData.location || null, // Capture Geo-tag
-        isLate: logData.isLate || false,     // Late status
+        location: logData.location || null,
+        isLate: logData.isLate || false,
         txHash: txHash
-    });
+    };
+    
+    logs.push(finalLog);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+    
+    fetch('/api/logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalLog)
+    }).catch(e => console.error(e));
 }
 
 export function clearLogs() {
     localStorage.removeItem(STORAGE_KEY);
+    fetch('/api/logs', { method: 'DELETE' }).catch(e => console.error(e));
 }
 
 export function saveFaceDescriptor(studentId, descriptorArray) {
     const faces = getFaceDescriptors();
     faces[studentId] = descriptorArray;
     localStorage.setItem(FACE_DATA_KEY, JSON.stringify(faces));
+    
+    fetch(`/api/faces/${studentId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descriptor: descriptorArray })
+    }).catch(e => console.error(e));
 }
 
 export function getFaceDescriptors() {
@@ -184,10 +242,8 @@ export function getAttendanceStats(timeframe = 'all') {
     const teacher = getCurrentTeacher();
     if (!teacher) return [];
 
-    // Filter logs for this teacher
     let filteredLogs = logs.filter(l => l.teacher === teacher);
 
-    // Filter by timeframe
     if (timeframe !== 'all') {
         const now = new Date();
         const daysToFilter = timeframe === 'weekly' ? 7 : 30;
@@ -199,7 +255,6 @@ export function getAttendanceStats(timeframe = 'all') {
         });
     }
 
-    // Identify unique sessions for this teacher per subject/period in the filtered timeframe
     const sessionsBySubject = {};
     filteredLogs.forEach(log => {
         if (!sessionsBySubject[log.period]) {
@@ -238,6 +293,12 @@ export function saveTeacherFaceDescriptor(teacherName, descriptorArray) {
     const faces = getTeacherFaceDescriptors();
     faces[teacherName] = descriptorArray;
     localStorage.setItem(TEACHER_FACE_DATA_KEY, JSON.stringify(faces));
+    
+    fetch(`/api/teacher-faces/${teacherName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descriptor: descriptorArray })
+    }).catch(e => console.error(e));
 }
 
 export function getTeacherFaceDescriptors() {
@@ -249,17 +310,17 @@ export function removeFaceDescriptor(studentId) {
     const faces = getFaceDescriptors();
     delete faces[studentId];
     localStorage.setItem(FACE_DATA_KEY, JSON.stringify(faces));
+    
+    fetch(`/api/faces/${studentId}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
 
 export function removeTeacherFaceDescriptor(teacherName) {
     const faces = getTeacherFaceDescriptors();
     delete faces[teacherName];
     localStorage.setItem(TEACHER_FACE_DATA_KEY, JSON.stringify(faces));
+    
+    fetch(`/api/teacher-faces/${teacherName}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
-
-// ========================================
-// STUDENT PORTAL LOGIC
-// ========================================
 
 const STUDENT_SESSION_KEY = 'smart_attendance_current_student';
 
@@ -279,7 +340,6 @@ export function getStudentStats(studentId) {
     const logs = getLogs();
     const studentLogs = logs.filter(l => l.studentId.toString() === studentId.toString());
     
-    // Identify unique sessions across all teachers for all subjects
     const sessionsBySubject = {};
     logs.forEach(log => {
         if (!sessionsBySubject[log.period]) {
@@ -310,10 +370,6 @@ export function getStudentStats(studentId) {
     }));
 }
 
-// ========================================
-// LEAVE MANAGEMENT LOGIC
-// ========================================
-
 const LEAVES_KEY = 'smart_attendance_leaves';
 
 export function getLeaves() {
@@ -328,11 +384,18 @@ export function submitLeave(studentId, date, reason) {
         studentId: studentId.toString(),
         date,
         reason,
-        status: 'Pending', // Pending, Approved, Rejected
+        status: 'Pending',
         timestamp: new Date().toISOString()
     };
     leaves.push(newLeave);
     localStorage.setItem(LEAVES_KEY, JSON.stringify(leaves));
+    
+    fetch('/api/leaves', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newLeave)
+    }).catch(e => console.error(e));
+    
     return newLeave;
 }
 
@@ -340,4 +403,10 @@ export function updateLeaveStatus(leaveId, status) {
     const leaves = getLeaves();
     const updated = leaves.map(l => l.id === leaveId ? { ...l, status } : l);
     localStorage.setItem(LEAVES_KEY, JSON.stringify(updated));
+    
+    fetch(`/api/leaves/${leaveId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+    }).catch(e => console.error(e));
 }

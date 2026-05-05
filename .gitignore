@@ -24,3 +24,10 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Python Backend
+backend/venv/
+backend/__pycache__/
+backend/*.db
+backend/*.db-journal
+*.pyc
