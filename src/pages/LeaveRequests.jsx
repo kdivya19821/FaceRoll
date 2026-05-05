@@ -65,7 +65,9 @@ export default function LeaveRequests() {
                                             </div>
                                             <div className="flex items-center space-x-1.5 bg-zinc-950/50 px-2.5 py-1.5 rounded-lg border border-zinc-800">
                                                 <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                                                <span className="text-xs font-bold text-zinc-300">{leave.date}</span>
+                                                <span className="text-xs font-bold text-zinc-300">
+                                                    {leave.fromDate} <span className="text-zinc-600 font-normal">to</span> {leave.toDate}
+                                                </span>
                                             </div>
                                         </div>
                                         
@@ -109,7 +111,9 @@ export default function LeaveRequests() {
                                 <div key={leave.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex justify-between items-center">
                                     <div>
                                         <p className="text-sm font-bold text-white">{getStudentName(leave.studentId)}</p>
-                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{leave.date}</p>
+                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+                                            {leave.fromDate} to {leave.toDate}
+                                        </p>
                                     </div>
                                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${
                                         leave.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :

@@ -48,6 +48,8 @@ class Period(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     teacherName = Column(String, index=True)
     periodName = Column(String)
+    startTime = Column(String, nullable=True)
+    endTime = Column(String, nullable=True)
 
 class Leave(Base):
     __tablename__ = "leaves"

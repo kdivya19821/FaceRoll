@@ -63,7 +63,7 @@ export function saveStudent(student) {
         students.push(student);
     }
     localStorage.setItem(STUDENT_LIST_KEY, JSON.stringify(students));
-    
+
     // Sync to backend
     fetch('/api/students', {
         method: 'POST',
@@ -75,7 +75,7 @@ export function saveStudent(student) {
 export function removeStudent(studentId) {
     const students = getStudents().filter(s => s.id !== studentId);
     localStorage.setItem(STUDENT_LIST_KEY, JSON.stringify(students));
-    
+
     // Sync to backend
     fetch(`/api/students/${studentId}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
@@ -87,26 +87,57 @@ export const TEACHER_SUBJECTS = {
 };
 
 export const PERIOD_TIMINGS = {
-    'AI': '09:00',
-    'Web Content System Management': '10:30',
-    'FDS': '11:45',
-    'PHP and MySQL': '14:00'
+    'AI': '09:00-09:45',
+    'Web Content System Management': '10:30-11:15',
+    'FDS': '11:45-12:30',
+    'PHP and MySQL': '12:30-1:15',
 };
 
 export function checkLateStatus(periodName) {
-    const startTime = PERIOD_TIMINGS[periodName];
-    if (!startTime) return false;
+    const periods = getPeriods();
+    const period = periods.find(p => (typeof p === 'object' ? p.periodName : p) === periodName);
+    
+    if (!period || typeof period !== 'object' || !period.startTime || !period.endTime) {
+        // Fallback to old hardcoded timings if still in migration
+        const fallbackTiming = PERIOD_TIMINGS[periodName];
+        if (!fallbackTiming) return { isLate: false, isAllowed: true, status: 'On-time' };
+        
+        const [startStr, endStr] = fallbackTiming.split('-');
+        return _calculateLateStatus(startStr, endStr);
+    }
 
+    return _calculateLateStatus(period.startTime, period.endTime);
+}
+
+function _calculateLateStatus(startStr, endStr) {
     const now = new Date();
-    const [startHour, startMin] = startTime.split(':').map(Number);
-    const startObj = new Date();
-    startObj.setHours(startHour, startMin, 0, 0);
+
+    const parseTime = (timeStr) => {
+        let [hours, minutes] = timeStr.trim().split(':').map(Number);
+        // Heuristic: If hours is small (e.g., < 7) it's likely PM (13, 14, etc.)
+        if (hours < 7) hours += 12;
+        const date = new Date();
+        date.setHours(hours, minutes, 0, 0);
+        return date;
+    };
+
+    const startObj = parseTime(startStr);
+    const endObj = parseTime(endStr);
+
+    if (now < startObj) {
+        return { isLate: false, isAllowed: false, status: 'Early' };
+    }
+    if (now > endObj) {
+        return { isLate: false, isAllowed: false, status: 'Absent' };
+    }
 
     const lateThresholdMinutes = 15;
-    const diffMs = now - startObj;
-    const diffMins = diffMs / (1000 * 60);
+    const diffMins = (now - startObj) / (1000 * 60);
 
-    return diffMins > lateThresholdMinutes;
+    if (diffMins > lateThresholdMinutes) {
+        return { isLate: true, isAllowed: true, status: 'Late' };
+    }
+    return { isLate: false, isAllowed: true, status: 'On-time' };
 }
 
 export function login(name) {
@@ -139,24 +170,27 @@ export function getPeriods() {
             return defaults;
         }
     }
-    
+
     return periods || [];
 }
 
-export function savePeriod(newPeriod) {
+export function savePeriod(newPeriod, startTime, endTime) {
     const teacher = getCurrentTeacher();
     if (!teacher) return;
 
     const key = PERIODS_KEY + '_' + teacher;
     const periods = getPeriods();
-    if (newPeriod.trim().length > 0 && !periods.includes(newPeriod.trim())) {
-        periods.push(newPeriod.trim());
+    const exists = periods.some(p => (typeof p === 'string' ? p : p.periodName) === newPeriod.trim());
+    
+    if (newPeriod.trim().length > 0 && !exists) {
+        const periodObj = { periodName: newPeriod.trim(), startTime, endTime };
+        periods.push(periodObj);
         localStorage.setItem(key, JSON.stringify(periods));
-        
+
         fetch(`/api/periods/${teacher}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ periodName: newPeriod.trim() })
+            body: JSON.stringify(periodObj)
         }).catch(e => console.error(e));
     }
 }
@@ -167,15 +201,24 @@ export function removePeriod(periodName) {
 
     const key = PERIODS_KEY + '_' + teacher;
     const periods = getPeriods();
-    const updated = periods.filter(p => p !== periodName);
+    const updated = periods.filter(p => (typeof p === 'string' ? p : p.periodName) !== periodName);
     localStorage.setItem(key, JSON.stringify(updated));
-    
+
     fetch(`/api/periods/${teacher}/${periodName}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
 
 export function getLogs() {
     const logs = localStorage.getItem(STORAGE_KEY);
     return logs ? JSON.parse(logs) : [];
+}
+
+export function isAttendanceMarked(studentId, period, date) {
+    const logs = getLogs();
+    return logs.some(l => 
+        l.studentId.toString() === studentId.toString() && 
+        l.period === period && 
+        l.fullDate === (date || new Date().toDateString())
+    );
 }
 
 async function generateHash(payload) {
@@ -187,6 +230,12 @@ async function generateHash(payload) {
 }
 
 export async function saveLog(logData) {
+    // Prevent duplicates
+    if (isAttendanceMarked(logData.studentId, logData.period, logData.fullDate)) {
+        console.warn('Attendance already marked for this student in this session.');
+        return { success: false, message: 'Already marked' };
+    }
+
     const logs = getLogs();
     const payloadToHash = {
         studentId: logData.studentId,
@@ -194,7 +243,7 @@ export async function saveLog(logData) {
         fullDate: logData.fullDate,
         teacher: logData.teacher
     };
-    
+
     const txHash = await generateHash(payloadToHash);
 
     const finalLog = {
@@ -204,10 +253,10 @@ export async function saveLog(logData) {
         isLate: logData.isLate || false,
         txHash: txHash
     };
-    
+
     logs.push(finalLog);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
-    
+
     fetch('/api/logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -224,7 +273,7 @@ export function saveFaceDescriptor(studentId, descriptorArray) {
     const faces = getFaceDescriptors();
     faces[studentId] = descriptorArray;
     localStorage.setItem(FACE_DATA_KEY, JSON.stringify(faces));
-    
+
     fetch(`/api/faces/${studentId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -248,7 +297,7 @@ export function getAttendanceStats(timeframe = 'all') {
         const now = new Date();
         const daysToFilter = timeframe === 'weekly' ? 7 : 30;
         const cutoffDate = new Date(now.setDate(now.getDate() - daysToFilter));
-        
+
         filteredLogs = filteredLogs.filter(log => {
             const logDate = new Date(log.timestamp || log.fullDate);
             return logDate >= cutoffDate;
@@ -293,7 +342,7 @@ export function saveTeacherFaceDescriptor(teacherName, descriptorArray) {
     const faces = getTeacherFaceDescriptors();
     faces[teacherName] = descriptorArray;
     localStorage.setItem(TEACHER_FACE_DATA_KEY, JSON.stringify(faces));
-    
+
     fetch(`/api/teacher-faces/${teacherName}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -310,7 +359,7 @@ export function removeFaceDescriptor(studentId) {
     const faces = getFaceDescriptors();
     delete faces[studentId];
     localStorage.setItem(FACE_DATA_KEY, JSON.stringify(faces));
-    
+
     fetch(`/api/faces/${studentId}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
 
@@ -318,7 +367,7 @@ export function removeTeacherFaceDescriptor(teacherName) {
     const faces = getTeacherFaceDescriptors();
     delete faces[teacherName];
     localStorage.setItem(TEACHER_FACE_DATA_KEY, JSON.stringify(faces));
-    
+
     fetch(`/api/teacher-faces/${teacherName}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
 
@@ -339,7 +388,10 @@ export function getCurrentStudent() {
 export function getStudentStats(studentId) {
     const logs = getLogs();
     const studentLogs = logs.filter(l => l.studentId.toString() === studentId.toString());
-    
+
+    // Get all unique subjects that have ever had a session
+    const allSubjects = Array.from(new Set(logs.map(l => l.period)));
+
     const sessionsBySubject = {};
     logs.forEach(log => {
         if (!sessionsBySubject[log.period]) {
@@ -348,26 +400,22 @@ export function getStudentStats(studentId) {
         sessionsBySubject[log.period].add(log.fullDate);
     });
 
-    const stats = {};
-    studentLogs.forEach(log => {
-        if (!stats[log.period]) {
-            stats[log.period] = {
-                subject: log.period,
-                teacher: log.teacher,
-                attended: new Set(),
-                lateCount: 0,
-                total: sessionsBySubject[log.period] ? sessionsBySubject[log.period].size : 0
-            };
-        }
-        stats[log.period].attended.add(log.fullDate);
-        if (log.isLate) stats[log.period].lateCount += 1;
-    });
+    return allSubjects.map(subject => {
+        const subjectLogs = studentLogs.filter(l => l.period === subject);
+        const attended = new Set(subjectLogs.map(l => l.fullDate)).size;
+        const total = sessionsBySubject[subject] ? sessionsBySubject[subject].size : 0;
+        const teacher = logs.find(l => l.period === subject)?.teacher || 'N/A';
+        const lateCount = subjectLogs.filter(l => l.isLate).length;
 
-    return Object.values(stats).map(s => ({
-        ...s,
-        attended: s.attended.size,
-        percentage: s.total > 0 ? Math.round((s.attended.size / s.total) * 100) : 0
-    }));
+        return {
+            subject,
+            teacher,
+            attended,
+            total,
+            lateCount,
+            percentage: total > 0 ? Math.round((attended / total) * 100) : 0
+        };
+    });
 }
 
 const LEAVES_KEY = 'smart_attendance_leaves';
@@ -377,25 +425,27 @@ export function getLeaves() {
     return leaves ? JSON.parse(leaves) : [];
 }
 
-export function submitLeave(studentId, date, reason) {
+export function submitLeave(studentId, fromDate, toDate, reason, subject = '') {
     const leaves = getLeaves();
     const newLeave = {
         id: 'leave_' + Date.now(),
         studentId: studentId.toString(),
-        date,
+        fromDate,
+        toDate,
         reason,
+        subject,
         status: 'Pending',
         timestamp: new Date().toISOString()
     };
     leaves.push(newLeave);
     localStorage.setItem(LEAVES_KEY, JSON.stringify(leaves));
-    
+
     fetch('/api/leaves', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newLeave)
     }).catch(e => console.error(e));
-    
+
     return newLeave;
 }
 
@@ -403,7 +453,7 @@ export function updateLeaveStatus(leaveId, status) {
     const leaves = getLeaves();
     const updated = leaves.map(l => l.id === leaveId ? { ...l, status } : l);
     localStorage.setItem(LEAVES_KEY, JSON.stringify(updated));
-    
+
     fetch(`/api/leaves/${leaveId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

@@ -47,6 +47,8 @@ class FaceDescriptorCreate(BaseModel):
 
 class PeriodCreate(BaseModel):
     periodName: str
+    startTime: str | None = None
+    endTime: str | None = None
 
 class LeaveCreate(BaseModel):
     studentId: str
@@ -111,13 +113,18 @@ def get_periods(teacher: str, db: Session = Depends(get_db)):
             db.add(Period(teacherName=teacher, periodName=d))
         db.commit()
         periods = db.query(Period).filter(Period.teacherName == teacher).all()
-    return [p.periodName for p in periods]
+    return [{"periodName": p.periodName, "startTime": p.startTime, "endTime": p.endTime} for p in periods]
 
 @app.post("/api/periods/{teacher}")
 def save_period(teacher: str, period: PeriodCreate, db: Session = Depends(get_db)):
     existing = db.query(Period).filter(Period.teacherName == teacher, Period.periodName == period.periodName).first()
     if not existing and period.periodName.strip():
-        db.add(Period(teacherName=teacher, periodName=period.periodName.strip()))
+        db.add(Period(
+            teacherName=teacher, 
+            periodName=period.periodName.strip(),
+            startTime=period.startTime,
+            endTime=period.endTime
+        ))
         db.commit()
     return {"message": "Success"}
 

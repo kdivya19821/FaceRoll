@@ -4,7 +4,7 @@ import * as faceapi from '@vladmandic/face-api';
 import { ArrowLeft, CheckCircle2, ScanFace } from 'lucide-react';
 import CameraView from '../components/CameraView';
 import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
-import { getStudents, getPeriods, saveLog, getFaceDescriptors, getCurrentTeacher, checkLateStatus } from '../utils/storage';
+import { getStudents, getPeriods, saveLog, getFaceDescriptors, getCurrentTeacher, checkLateStatus, getLogs } from '../utils/storage';
 import { announceAttendance, speak } from '../utils/speechUtils';
 import { Volume2, VolumeX, MapPin, Clock3 } from 'lucide-react';
 
@@ -156,7 +156,21 @@ export default function Attendance() {
             if (newlyMatchedStudents.length > 0) {
                 scanningCooldownRef.current = true;
 
-                const isLate = checkLateStatus(selectedPeriod);
+                const statusInfo = checkLateStatus(selectedPeriod);
+                
+                if (!statusInfo.isAllowed) {
+                    const msg = statusInfo.status === 'Early' ? "Class hasn't started yet!" : "Class ended! You are marked ABSENT.";
+                    setStatus(msg);
+                    if (voiceEnabled) speak(msg);
+                    
+                    setTimeout(() => {
+                        setStatus("Scanning...");
+                        scanningCooldownRef.current = false;
+                    }, 4000);
+                    return;
+                }
+
+                const isLate = statusInfo.isLate;
                 
                 // Capture Location once for batch
                 let location = null;
@@ -240,16 +254,26 @@ export default function Attendance() {
                     className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-xl py-4 px-4 font-semibold outline-none focus:ring-2 focus:ring-emerald-500/50 appearance-none"
                     value={selectedPeriod}
                     onChange={(e) => {
-                        setSelectedPeriod(e.target.value);
+                        const period = e.target.value;
+                        setSelectedPeriod(period);
                         scannedSessionIdsRef.current.clear();
                         pendingLivenessRef.current.clear();
-                        if (e.target.value && faceMatcherRef.current) setStatus("Scanning...");
+
+                        if (period) {
+                            const logs = getLogs();
+                            const today = new Date().toDateString();
+                            logs.filter(l => l.period === period && l.fullDate === today)
+                                .forEach(l => scannedSessionIdsRef.current.add(l.studentId.toString()));
+                            
+                            if (faceMatcherRef.current) setStatus("Scanning...");
+                        }
                     }}
                 >
                     <option value="">-- Choose Period --</option>
-                    {PERIODS.map(p => (
-                        <option key={p} value={p}>{p}</option>
-                    ))}
+                    {PERIODS.map(p => {
+                        const name = typeof p === 'string' ? p : p.periodName;
+                        return <option key={name} value={name}>{name}</option>;
+                    })}
                 </select>
             </div>
 

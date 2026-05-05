@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
-import { getStudents, getPeriods, saveLog, getCurrentTeacher } from '../utils/storage';
+import { getStudents, getPeriods, saveLog, getCurrentTeacher, getLogs } from '../utils/storage';
 
 export default function ManualAttendance() {
     const navigate = useNavigate();
@@ -11,6 +11,7 @@ export default function ManualAttendance() {
     const [selectedPeriod, setSelectedPeriod] = useState('');
     const [attendanceState, setAttendanceState] = useState({}); // { studentId: 'present' | 'absent' | 'late' }
     const [loading, setLoading] = useState(false);
+    const [markedIds, setMarkedIds] = useState(new Set());
 
     // Default to present as it's faster for bulk entry, teachers usually only mark absentees
     useEffect(() => {
@@ -82,12 +83,27 @@ export default function ManualAttendance() {
                 <select
                     className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-xl py-4 px-4 font-semibold outline-none focus:ring-2 focus:ring-amber-500/50 appearance-none"
                     value={selectedPeriod}
-                    onChange={(e) => setSelectedPeriod(e.target.value)}
+                    onChange={(e) => {
+                        const period = e.target.value;
+                        setSelectedPeriod(period);
+                        if (period) {
+                            const logs = getLogs();
+                            const today = new Date().toDateString();
+                            const marked = new Set(
+                                logs.filter(l => l.period === period && l.fullDate === today)
+                                    .map(l => l.studentId.toString())
+                            );
+                            setMarkedIds(marked);
+                        } else {
+                            setMarkedIds(new Set());
+                        }
+                    }}
                 >
                     <option value="">-- Choose Period --</option>
-                    {PERIODS.map(p => (
-                        <option key={p} value={p}>{p}</option>
-                    ))}
+                    {PERIODS.map(p => {
+                        const name = typeof p === 'string' ? p : p.periodName;
+                        return <option key={name} value={name}>{name}</option>;
+                    })}
                 </select>
             </div>
 
@@ -100,28 +116,36 @@ export default function ManualAttendance() {
                 <div className="flex-1 overflow-y-auto space-y-3 pb-24 scrollbar-hide">
                     {students.map(student => {
                         const status = attendanceState[student.id];
+                        const isMarked = markedIds.has(student.id.toString());
+
                         return (
-                            <div key={student.id} className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between shadow-xl">
+                            <div key={student.id} className={`bg-zinc-900 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between shadow-xl transition-opacity ${isMarked ? 'opacity-50' : ''}`}>
                                 <div className="space-y-0.5 pointer-events-none">
-                                    <h4 className="font-bold text-white text-base leading-tight">{student.name}</h4>
+                                    <h4 className="font-bold text-white text-base leading-tight">
+                                        {student.name}
+                                        {isMarked && <span className="ml-2 text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">Marked</span>}
+                                    </h4>
                                     <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">ID: {student.id}</p>
                                 </div>
                                 <div className="flex bg-zinc-950 rounded-xl p-1 border border-zinc-800">
                                     <button 
+                                        disabled={isMarked}
                                         onClick={() => handleToggle(student.id, 'present')}
-                                        className={`p-2 rounded-lg transition-all ${status === 'present' ? 'bg-emerald-500 text-white shadow-lg' : 'text-zinc-600 hover:bg-zinc-900'}`}
+                                        className={`p-2 rounded-lg transition-all ${status === 'present' && !isMarked ? 'bg-emerald-500 text-white shadow-lg' : 'text-zinc-600 hover:bg-zinc-900'} disabled:cursor-not-allowed`}
                                     >
                                         <CheckCircle2 className="w-5 h-5" />
                                     </button>
                                     <button 
+                                        disabled={isMarked}
                                         onClick={() => handleToggle(student.id, 'late')}
-                                        className={`p-2 rounded-lg transition-all ${status === 'late' ? 'bg-amber-500 text-white shadow-lg' : 'text-zinc-600 hover:bg-zinc-900'}`}
+                                        className={`p-2 rounded-lg transition-all ${status === 'late' && !isMarked ? 'bg-amber-500 text-white shadow-lg' : 'text-zinc-600 hover:bg-zinc-900'} disabled:cursor-not-allowed`}
                                     >
                                         <Clock className="w-5 h-5" />
                                     </button>
                                     <button 
+                                        disabled={isMarked}
                                         onClick={() => handleToggle(student.id, 'absent')}
-                                        className={`p-2 rounded-lg transition-all ${status === 'absent' ? 'bg-rose-500 text-white shadow-lg' : 'text-zinc-600 hover:bg-zinc-900'}`}
+                                        className={`p-2 rounded-lg transition-all ${status === 'absent' && !isMarked ? 'bg-rose-500 text-white shadow-lg' : 'text-zinc-600 hover:bg-zinc-900'} disabled:cursor-not-allowed`}
                                     >
                                         <XCircle className="w-5 h-5" />
                                     </button>

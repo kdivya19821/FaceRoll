@@ -114,6 +114,20 @@ export default function StudentLogin() {
             </div>
 
             <div className="w-full relative bg-zinc-900 rounded-[2rem] p-2 border border-zinc-800/60 overflow-hidden shadow-2xl h-[40vh]">
+                {/* Scanner Animation Overlay */}
+                <div className="absolute inset-x-2 top-2 bottom-2 z-20 pointer-events-none overflow-hidden rounded-[1.8rem]">
+                    <div className="w-full h-[2px] bg-emerald-500/80 shadow-[0_0_15px_#10b981] absolute top-0 left-0 animate-[scan_3s_linear_infinite]"></div>
+                    <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/5 to-transparent h-20 animate-[scan_3s_linear_infinite]"></div>
+                </div>
+
+                <style dangerouslySetInnerHTML={{ __html: `
+                    @keyframes scan {
+                        0% { transform: translateY(0); }
+                        50% { transform: translateY(35vh); }
+                        100% { transform: translateY(0); }
+                    }
+                `}} />
+
                 {loadingModels ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 z-10 bg-zinc-900">
                         <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
@@ -122,7 +136,7 @@ export default function StudentLogin() {
                 ) : (
                     <CameraView ref={cameraRef} onDraw={handleDraw} />
                 )}
-                <div className="absolute bottom-3 left-3 right-3 bg-zinc-900/90 backdrop-blur-md px-4 py-2 rounded-xl text-center shadow-lg border border-zinc-700">
+                <div className="absolute bottom-3 left-3 right-3 bg-zinc-900/90 backdrop-blur-md px-4 py-2 rounded-xl text-center shadow-lg border border-zinc-700 z-30">
                     <p className={`font-semibold text-xs sm:text-sm ${autoLoginTriggered.current ? 'text-emerald-400 animate-pulse' : 'text-zinc-300'}`}>
                         {scanStatus}
                     </p>

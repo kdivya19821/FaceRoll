@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, BookOpen, Trash2, PieChart, List, UserCheck, AlertCircle, BarChart3, MapPin, TrendingUp, Landmark, Download, Database } from 'lucide-react';
-import { getLogs, clearLogs, getAttendanceStats, getCurrentTeacher } from '../utils/storage';
+import { ArrowLeft, Calendar, Clock, BookOpen, Trash2, PieChart, List, UserCheck, AlertCircle, BarChart3, MapPin, TrendingUp, Landmark, Download, Database, FileText } from 'lucide-react';
+import { getLogs, clearLogs, getAttendanceStats, getCurrentTeacher, getStudents } from '../utils/storage';
 import { 
     ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, 
     Cell, PieChart as RePieChart, Pie, Legend 
@@ -28,6 +28,9 @@ export default function Dashboard() {
         });
 
     const stats = getAttendanceStats(timeframe);
+
+    // Calculate total sessions taken by teacher in this timeframe
+    const totalTeacherSessions = Array.from(new Set(filteredLogs.map(l => `${l.period}-${l.fullDate}`))).length;
 
     const handleClear = () => {
         if (confirm('Are you sure you want to delete all attendance records? This cannot be undone.')) {
@@ -58,11 +61,57 @@ export default function Dashboard() {
         ].join(","));
 
         const csvContent = [headers.join(","), ...csvRows].join("\n");
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        downloadCSV(csvContent, `Attendance_Raw_Logs_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`);
+    };
+
+    const handleExportStats = () => {
+        if (stats.length === 0) {
+            alert("No statistics to export!");
+            return;
+        }
+
+        // Sort by subject then by student name
+        const sortedStats = [...stats].sort((a, b) => {
+            const subjectCompare = a.subject.localeCompare(b.subject);
+            if (subjectCompare !== 0) return subjectCompare;
+            return a.studentName.localeCompare(b.studentName);
+        });
+
+        const headers = ["Subject", "Student ID", "Name", "Attended Classes", "Total Sessions", "Attendance Percentage"];
+        const csvRows = [];
+        csvRows.push(headers.join(","));
+
+        let currentSubject = "";
+        sortedStats.forEach(s => {
+            // Add a header and spacing when the subject changes
+            if (s.subject !== currentSubject) {
+                if (currentSubject !== "") {
+                    csvRows.push(""); // Add an empty row between subjects
+                }
+                csvRows.push(`"SECTION: ${s.subject.toUpperCase()} REPORT"`);
+                currentSubject = s.subject;
+            }
+
+            csvRows.push([
+                `"${s.subject}"`,
+                s.studentId,
+                `"${s.studentName}"`,
+                s.attended,
+                s.total,
+                `"${s.percentage}%"`
+            ].join(","));
+        });
+
+        const csvContent = csvRows.join("\n");
+        downloadCSV(csvContent, `Attendance_Subject_Summary_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`);
+    };
+
+    const downloadCSV = (content, filename) => {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `Attendance_Report_${new Date().toLocaleDateString()}.csv`);
+        link.setAttribute("download", filename);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -105,12 +154,29 @@ export default function Dashboard() {
                 </button>
                 <h2 className="text-xl font-bold text-white tracking-tight">Analytics</h2>
                 <div className="flex items-center space-x-2">
-                    <button onClick={() => navigate('/database')} className="p-2 bg-indigo-500/10 rounded-full hover:bg-indigo-500/20 transition group border border-indigo-500/20">
+                    <button onClick={() => navigate('/database')} className="p-2 bg-indigo-500/10 rounded-full hover:bg-indigo-500/20 transition group border border-indigo-500/20" title="DB Explorer">
                         <Database className="w-5 h-5 text-indigo-500 group-hover:scale-110 transition-transform" />
                     </button>
-                    <button onClick={handleExport} className="p-2 bg-emerald-500/10 rounded-full hover:bg-emerald-500/20 transition group border border-emerald-500/20">
+                    
+                    {/* Raw Logs Export */}
+                    <button 
+                        onClick={handleExport} 
+                        className="p-2 bg-emerald-500/10 rounded-full hover:bg-emerald-500/20 transition group border border-emerald-500/20"
+                        title="Export Raw Logs"
+                    >
                         <Download className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" />
                     </button>
+
+                    {/* Summary Export */}
+                    <button 
+                        onClick={handleExportStats} 
+                        className="p-2 bg-amber-500/10 rounded-full hover:bg-amber-500/20 transition group border border-amber-500/20 flex items-center space-x-1 px-3"
+                        title="Export Subject Summary"
+                    >
+                        <FileText className="w-5 h-5 text-amber-500 group-hover:scale-110 transition-transform" />
+                        <span className="text-[8px] font-black text-amber-500 uppercase tracking-tighter">Summary</span>
+                    </button>
+
                     <button onClick={handleClear} className="p-2 bg-rose-500/10 rounded-full hover:bg-rose-500/20 transition group border border-rose-500/20">
                         <Trash2 className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
                     </button>
@@ -169,15 +235,77 @@ export default function Dashboard() {
                     <span>STATS</span>
                 </button>
                 <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'charts' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    onClick={() => setViewMode('charts')}
+                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'sessions' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    onClick={() => setViewMode('sessions')}
                 >
-                    <BarChart3 className="w-3.5 h-3.5" />
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>SESSIONS</span>
                 </button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-1 pb-10 scrollbar-hide">
-                {viewMode === 'recent' ? (
+                {viewMode === 'sessions' ? (
+                    (() => {
+                        const allStudentsCount = getStudents().length;
+                        // Group logs by session (subject + date)
+                        const sessions = {};
+                        filteredLogs.forEach(log => {
+                            const key = `${log.period}-${log.fullDate}`;
+                            if (!sessions[key]) {
+                                sessions[key] = {
+                                    subject: log.period,
+                                    date: log.fullDate,
+                                    present: new Set(),
+                                    day: log.day
+                                };
+                            }
+                            sessions[key].present.add(log.studentId);
+                        });
+
+                        const sessionList = Object.values(sessions).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                        return sessionList.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
+                                <Landmark className="w-12 h-12 mb-4 text-zinc-600" />
+                                <p className="text-lg font-semibold">No sessions recorded</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {sessionList.map((session, idx) => {
+                                    const presentCount = session.present.size;
+                                    const absentCount = Math.max(0, allStudentsCount - presentCount);
+                                    return (
+                                        <div key={idx} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <h3 className="text-base font-bold text-white">{session.subject}</h3>
+                                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{session.day}, {session.date}</p>
+                                                </div>
+                                                <div className="bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
+                                                    <span className="text-[10px] font-black text-indigo-400">SESSION #{sessionList.length - idx}</span>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-3 flex flex-col items-center">
+                                                    <p className="text-[9px] font-black text-emerald-500/60 uppercase mb-1">Present</p>
+                                                    <p className="text-xl font-black text-emerald-400">{presentCount}</p>
+                                                </div>
+                                                <div className="bg-rose-500/5 border border-rose-500/10 rounded-2xl p-3 flex flex-col items-center">
+                                                    <p className="text-[9px] font-black text-rose-500/60 uppercase mb-1">Absent</p>
+                                                    <p className="text-xl font-black text-rose-400">{absentCount}</p>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden flex">
+                                                <div className="h-full bg-emerald-500" style={{ width: `${(presentCount / allStudentsCount) * 100}%` }}></div>
+                                                <div className="h-full bg-rose-500" style={{ width: `${(absentCount / allStudentsCount) * 100}%` }}></div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })()
+                ) : viewMode === 'recent' ? (
                     filteredLogs.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center opacity-40 px-10 text-center">
                             <BookOpen className="w-12 h-12 mb-4 text-zinc-600" />
@@ -242,6 +370,31 @@ export default function Dashboard() {
                         </div>
                     ) : (
                         <div className="space-y-6 pb-6">
+                            {/* Summary Card for Teacher */}
+                            <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-6 shadow-xl shadow-indigo-500/20 mb-2 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
+                                <div className="relative z-10">
+                                    <p className="text-[10px] font-black text-indigo-100 uppercase tracking-[0.2em] mb-1 opacity-80">Teacher Workload</p>
+                                    <div className="flex items-end space-x-2">
+                                        <h4 className="text-4xl font-black text-white">{totalTeacherSessions}</h4>
+                                        <p className="text-xs font-bold text-indigo-100 mb-1.5 opacity-90">Classes Taken</p>
+                                    </div>
+                                    <div className="mt-4 flex items-center space-x-2 bg-black/20 backdrop-blur-sm rounded-xl p-2.5 border border-white/10">
+                                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                                        <p className="text-[10px] font-bold text-indigo-50 text-white/90">
+                                            {timeframe === 'all' ? 'Total sessions across all recorded subjects' : 
+                                             timeframe === 'monthly' ? 'Total sessions taken in the last 30 days' : 
+                                             'Total sessions taken in the last 7 days'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center space-x-3 mb-2 px-2 mt-8">
+                                <div className="h-4 w-1 rounded-full bg-indigo-500"></div>
+                                <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sessions by Subject</h3>
+                            </div>
+
                             {/* Summary Header: Total Classes Taken per Subject */}
                             <div className="grid grid-cols-2 gap-3 mb-2">
                                 {Array.from(new Set(stats.map(s => s.subject))).map(subject => {
@@ -259,31 +412,42 @@ export default function Dashboard() {
 
                             <div className="h-px bg-zinc-900 mx-2"></div>
 
-                            {/* Individual Student Stats */}
-                            <div className="space-y-4">
-                                {stats.map((stat, index) => (
-                                    <div key={index} className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 shadow-xl animate-in fade-in slide-in-from-right-4 duration-500" style={{ animationDelay: `${index * 50}ms` }}>
-                                        <div className="flex justify-between items-center mb-5">
-                                            <div className="space-y-0.5">
-                                                <h3 className="text-lg font-bold text-white leading-tight">{stat.studentName}</h3>
-                                                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{stat.subject}</p>
-                                            </div>
-                                            <div className={`px-3 py-1 rounded-full border text-[10px] font-black tracking-widest ${getStatusColor(stat.percentage)}`}>
-                                                {stat.percentage}%
-                                            </div>
+                            {/* Individual Student Stats Grouped by Subject */}
+                            <div className="space-y-10">
+                                {Array.from(new Set(stats.map(s => s.subject))).map(subject => (
+                                    <div key={subject} className="space-y-4">
+                                        <div className="flex items-center space-x-3 mb-4 px-2">
+                                            <div className="h-3 w-3 rounded-full bg-orange-500 shadow-lg shadow-orange-500/20"></div>
+                                            <h3 className="text-xs font-black text-zinc-400 uppercase tracking-[0.2em]">{subject} Report</h3>
                                         </div>
+                                        
+                                        <div className="space-y-4">
+                                            {stats.filter(s => s.subject === subject).map((stat, index) => (
+                                                <div key={index} className="bg-zinc-900 border border-zinc-800/80 rounded-3xl p-5 shadow-xl animate-in fade-in slide-in-from-right-4 duration-500" style={{ animationDelay: `${index * 30}ms` }}>
+                                                    <div className="flex justify-between items-center mb-5">
+                                                        <div className="space-y-0.5">
+                                                            <h3 className="text-lg font-bold text-white leading-tight">{stat.studentName}</h3>
+                                                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Enrollment ID: #{stat.studentId}</p>
+                                                        </div>
+                                                        <div className={`px-3 py-1 rounded-full border text-[10px] font-black tracking-widest ${getStatusColor(stat.percentage)}`}>
+                                                            {stat.percentage}%
+                                                        </div>
+                                                    </div>
 
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between items-end text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                                                <span>Attendance</span>
-                                                <span className="text-zinc-300">{stat.attended} / {stat.total} Classes</span>
-                                            </div>
-                                            <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-                                                <div 
-                                                    className={`h-full transition-all duration-1000 ease-out rounded-full ${getBarColor(stat.percentage)}`}
-                                                    style={{ width: `${stat.percentage}%` }}
-                                                ></div>
-                                            </div>
+                                                    <div className="space-y-3">
+                                                        <div className="flex justify-between items-end text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                                                            <span>Attendance Progress</span>
+                                                            <span className="text-zinc-300">{stat.attended} / {stat.total} Classes</span>
+                                                        </div>
+                                                        <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden p-0.5 border border-zinc-700/30">
+                                                            <div 
+                                                                className={`h-full transition-all duration-1000 ease-out rounded-full ${getBarColor(stat.percentage)}`}
+                                                                style={{ width: `${stat.percentage}%` }}
+                                                            ></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 ))}
