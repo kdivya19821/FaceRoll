@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } f
 import Webcam from 'react-webcam';
 import * as faceapi from '@vladmandic/face-api';
 
-const CameraView = forwardRef(({ onDraw, overlaySize = { width: 320, height: 400 } }, ref) => {
+const CameraView = forwardRef(({ onDraw, facingMode = "user", overlaySize = { width: 320, height: 400 } }, ref) => {
     const webcamRef = useRef(null);
     const canvasRef = useRef(null);
     const [isReady, setIsReady] = useState(false);
@@ -36,9 +36,10 @@ const CameraView = forwardRef(({ onDraw, overlaySize = { width: 320, height: 400
     return (
         <div className="relative w-full flex items-center justify-center bg-black overflow-hidden rounded-3xl shadow-xl border border-zinc-800">
             <Webcam
+                key={facingMode}
                 ref={webcamRef}
                 audio={false}
-                videoConstraints={{ facingMode: "user" }}
+                videoConstraints={{ facingMode }}
                 onUserMedia={handleVideoLoad}
                 className="w-full h-full object-cover"
                 style={{

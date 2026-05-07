@@ -4,9 +4,9 @@ import * as faceapi from '@vladmandic/face-api';
 import { ArrowLeft, CheckCircle2, ScanFace } from 'lucide-react';
 import CameraView from '../components/CameraView';
 import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
-import { getStudents, getPeriods, saveLog, getFaceDescriptors, getCurrentTeacher, checkLateStatus, getLogs } from '../utils/storage';
+import { getStudents, getPeriods, saveBatchLogs, getFaceDescriptors, getCurrentTeacher, checkLateStatus, getLogs } from '../utils/storage';
 import { announceAttendance, speak } from '../utils/speechUtils';
-import { Volume2, VolumeX, MapPin, Clock3 } from 'lucide-react';
+import { Volume2, VolumeX, MapPin, Clock3, Camera } from 'lucide-react';
 
 export default function Attendance() {
     const navigate = useNavigate();
@@ -18,6 +18,7 @@ export default function Attendance() {
     const [successData, setSuccessData] = useState(null);
     const [voiceEnabled, setVoiceEnabled] = useState(true);
     const [isLocating, setIsLocating] = useState(false);
+    const [facingMode, setFacingMode] = useState('environment');
 
     const cameraRef = useRef(null);
     const faceMatcherRef = useRef(null);
@@ -25,6 +26,7 @@ export default function Attendance() {
     const scannedSessionIdsRef = useRef(new Set());
     const pendingLivenessRef = useRef(new Map());
     const lastScanTimeRef = useRef(0);
+    const lastUnknownAnnounceRef = useRef(0);
 
     useEffect(() => {
         async function init() {
@@ -142,6 +144,11 @@ export default function Attendance() {
                     }
                 } else if (isUnknown) {
                     unrecognizedCount++;
+                    const now = Date.now();
+                    if (voiceEnabled && !scanningCooldownRef.current && now - lastUnknownAnnounceRef.current > 3000) {
+                        speak("Unknown person detected");
+                        lastUnknownAnnounceRef.current = now;
+                    }
                 }
 
                 // Draw dynamically updated box
@@ -187,35 +194,30 @@ export default function Attendance() {
                 const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 const day = now.toLocaleDateString([], { weekday: 'long' });
 
-                const loggedStudents = [];
-
-                await Promise.all(newlyMatchedStudents.map(async (student) => {
-                    const logData = {
-                        studentName: student.name,
-                        studentId: student.id,
-                        period: selectedPeriod,
-                        teacher: getCurrentTeacher() || 'Unknown Teacher',
-                        fullDate: now.toDateString(),
-                        time,
-                        day,
-                        isLate,
-                        location
-                    };
-                    await saveLog(logData);
-                    loggedStudents.push(logData);
+                const logsToSave = newlyMatchedStudents.map(student => ({
+                    studentName: student.name,
+                    studentId: student.id,
+                    period: selectedPeriod,
+                    teacher: getCurrentTeacher() || 'Unknown Teacher',
+                    fullDate: now.toDateString(),
+                    time,
+                    day,
+                    isLate,
+                    location
                 }));
 
-                setSuccessData(loggedStudents);
+                await saveBatchLogs(logsToSave);
+                setSuccessData(logsToSave);
                 
                 if (voiceEnabled) {
-                    if (loggedStudents.length === 1) {
-                        announceAttendance(loggedStudents[0].studentName, isLate);
+                    if (logsToSave.length === 1) {
+                        announceAttendance(logsToSave[0].studentName, isLate);
                     } else {
-                        speak(`${loggedStudents.length} students marked present`);
+                        speak(`${logsToSave.length} students marked present`);
                     }
                 }
 
-                setStatus(isLate ? `Late Entry: ${loggedStudents.length} student(s)` : `Success: ${loggedStudents.length} student(s) matched!`);
+                setStatus(isLate ? `Late Entry: ${logsToSave.length} student(s)` : `Success: ${logsToSave.length} student(s) matched!`);
 
                 setTimeout(() => {
                     setSuccessData(null);
@@ -245,6 +247,13 @@ export default function Attendance() {
                     className={`p-2 rounded-full transition border ${voiceEnabled ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-500'}`}
                 >
                     {voiceEnabled ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
+                </button>
+                <button 
+                    onClick={() => setFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
+                    className={`p-2 rounded-full transition border ${facingMode === 'environment' ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400' : 'bg-zinc-800 border-zinc-700 text-zinc-300'}`}
+                    title={facingMode === 'user' ? "Switch to Back Camera" : "Switch to Front Camera"}
+                >
+                    <Camera className="w-6 h-6" />
                 </button>
             </div>
 
@@ -284,7 +293,7 @@ export default function Attendance() {
                 </div>
             ) : (
                 <div className="relative flex-1 bg-zinc-900 rounded-[2rem] p-2 border border-zinc-800/60 overflow-hidden shadow-2xl">
-                    <CameraView ref={cameraRef} onDraw={handleDraw} />
+                    <CameraView ref={cameraRef} onDraw={handleDraw} facingMode={facingMode} />
 
                     {successData && (
                         <div className="absolute inset-0 bg-emerald-500/20 backdrop-blur-md flex flex-col items-center justify-center animate-in zoom-in duration-300 z-20 p-4">

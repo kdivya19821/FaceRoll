@@ -50,6 +50,8 @@ class Period(Base):
     periodName = Column(String)
     startTime = Column(String, nullable=True)
     endTime = Column(String, nullable=True)
+    room = Column(String, nullable=True)
+    color = Column(String, nullable=True)
 
 class Leave(Base):
     __tablename__ = "leaves"

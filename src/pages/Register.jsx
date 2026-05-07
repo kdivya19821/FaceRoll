@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as faceapi from '@vladmandic/face-api';
-import { ArrowLeft, UserPlus, Trash2 } from 'lucide-react';
+import { ArrowLeft, UserPlus, Trash2, Volume2, VolumeX, Camera } from 'lucide-react';
 import CameraView from '../components/CameraView';
 import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
 import { announceRegistration } from '../utils/speechUtils';
@@ -19,6 +19,8 @@ export default function Register() {
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState('Select a person and face the camera');
     const [isFaceRegistered, setIsFaceRegistered] = useState(false);
+    const [voiceEnabled, setVoiceEnabled] = useState(true);
+    const [facingMode, setFacingMode] = useState('user');
     const cameraRef = useRef(null);
     const lastScanTimeRef = useRef(0);
 
@@ -81,7 +83,7 @@ export default function Register() {
             }
             setIsFaceRegistered(true);
             setStatus("Face successfully registered!");
-            announceRegistration(selectedPerson);
+            if (voiceEnabled) announceRegistration(selectedPerson);
         } else {
             setStatus("No face detected! Move to bright light.");
         }
@@ -99,7 +101,22 @@ export default function Register() {
                     <ArrowLeft className="w-6 h-6 text-zinc-300" />
                 </button>
                 <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">Register Face</h2>
-                <div className="w-10"></div>
+                <button 
+                    onClick={() => {
+                        setVoiceEnabled(!voiceEnabled);
+                        if (!voiceEnabled) speak("Voice enabled");
+                    }}
+                    className={`p-2 rounded-full transition border ${voiceEnabled ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400' : 'bg-zinc-800 border-zinc-700 text-zinc-500'}`}
+                >
+                    {voiceEnabled ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
+                </button>
+                <button 
+                    onClick={() => setFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
+                    className={`p-2 rounded-full transition border ${facingMode === 'environment' ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400' : 'bg-zinc-800 border-zinc-700 text-zinc-300'}`}
+                    title={facingMode === 'user' ? "Switch to Back Camera" : "Switch to Front Camera"}
+                >
+                    <Camera className="w-6 h-6" />
+                </button>
             </div>
 
             {loading ? (
@@ -155,7 +172,7 @@ export default function Register() {
                     </div>
 
                     <div className="relative flex-1 bg-zinc-900 rounded-[2rem] p-2 border border-zinc-800/60 overflow-hidden shadow-2xl">
-                        <CameraView ref={cameraRef} onDraw={handleDraw} />
+                        <CameraView ref={cameraRef} onDraw={handleDraw} facingMode={facingMode} />
                         <div className="absolute bottom-4 left-4 right-4 bg-zinc-900/80 backdrop-blur-md px-4 py-3 rounded-2xl text-center shadow-lg border border-zinc-700">
                             <p className={`font-semibold text-sm ${isFaceRegistered ? 'text-emerald-400' : 'text-zinc-300'}`}>
                                 {status}

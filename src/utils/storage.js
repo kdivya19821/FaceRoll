@@ -230,38 +230,53 @@ async function generateHash(payload) {
 }
 
 export async function saveLog(logData) {
-    // Prevent duplicates
-    if (isAttendanceMarked(logData.studentId, logData.period, logData.fullDate)) {
-        console.warn('Attendance already marked for this student in this session.');
-        return { success: false, message: 'Already marked' };
+    return await saveBatchLogs([logData]);
+}
+
+export async function saveBatchLogs(logsDataArray) {
+    const logs = getLogs();
+    const savedLogs = [];
+
+    for (const logData of logsDataArray) {
+        // Prevent duplicates
+        if (isAttendanceMarked(logData.studentId, logData.period, logData.fullDate)) {
+            console.warn(`Attendance already marked for student ${logData.studentId} in this session.`);
+            continue;
+        }
+
+        const payloadToHash = {
+            studentId: logData.studentId,
+            time: logData.time,
+            fullDate: logData.fullDate,
+            teacher: logData.teacher
+        };
+
+        const txHash = await generateHash(payloadToHash);
+
+        const finalLog = {
+            ...logData,
+            timestamp: new Date().toISOString(),
+            location: logData.location || null,
+            isLate: logData.isLate || false,
+            txHash: txHash
+        };
+
+        logs.push(finalLog);
+        savedLogs.push(finalLog);
+
+        // Sync individual to backend (or could batch this too if backend supports it)
+        fetch('/api/logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(finalLog)
+        }).catch(e => console.error(e));
     }
 
-    const logs = getLogs();
-    const payloadToHash = {
-        studentId: logData.studentId,
-        time: logData.time,
-        fullDate: logData.fullDate,
-        teacher: logData.teacher
-    };
-
-    const txHash = await generateHash(payloadToHash);
-
-    const finalLog = {
-        ...logData,
-        timestamp: new Date().toISOString(),
-        location: logData.location || null,
-        isLate: logData.isLate || false,
-        txHash: txHash
-    };
-
-    logs.push(finalLog);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
-
-    fetch('/api/logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalLog)
-    }).catch(e => console.error(e));
+    if (savedLogs.length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+    }
+    
+    return { success: true, count: savedLogs.length };
 }
 
 export function clearLogs() {
@@ -329,11 +344,30 @@ export function getAttendanceStats(timeframe = 'all') {
         if (log.isLate) stats[key].lateCount += 1;
     });
 
-    return Object.values(stats).map(s => ({
-        ...s,
-        attended: s.attended.size,
-        percentage: s.total > 0 ? Math.round((s.attended.size / s.total) * 100) : 0
-    }));
+    return Object.values(stats).map(s => {
+        const percentage = s.total > 0 ? Math.round((s.attended.size / s.total) * 100) : 0;
+        
+        // AI Predictive Logic:
+        // Assume a standard semester has 40 sessions.
+        // Current trend projection:
+        const totalExpectedSessions = 40; 
+        const remainingSessions = Math.max(0, totalExpectedSessions - s.total);
+        const currentRate = s.total > 0 ? (s.attended.size / s.total) : 0;
+        const predictedAttended = s.attended.size + (remainingSessions * currentRate);
+        const predictedPercentage = Math.round((predictedAttended / totalExpectedSessions) * 100);
+
+        let riskLevel = 'Low';
+        if (percentage < 70 || predictedPercentage < 75) riskLevel = 'High';
+        else if (percentage < 80 || predictedPercentage < 85) riskLevel = 'Medium';
+
+        return {
+            ...s,
+            attended: s.attended.size,
+            percentage,
+            predictedPercentage,
+            riskLevel
+        };
+    });
 }
 
 const TEACHER_FACE_DATA_KEY = 'smart_attendance_teacher_faces';

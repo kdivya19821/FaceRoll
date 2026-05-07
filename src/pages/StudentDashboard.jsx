@@ -49,12 +49,20 @@ export default function StudentDashboard() {
     const monthlyLeaves = studentLeaves.filter(l => new Date(l.timestamp) >= startOfMonth).length;
     const weeklyLeaves = studentLeaves.filter(l => new Date(l.timestamp) >= startOfWeek).length;
 
-    // Advanced Prediction Logic
-    const predictAttendance = (attended, total) => {
-        if (total === 0) return 100;
-        const remainingSessions = 10; // Assume 10 more sessions in semester
-        const predicted = Math.round(((attended + (remainingSessions * 0.8)) / (total + remainingSessions)) * 100);
-        return Math.min(100, predicted);
+    // Advanced Prediction Logic (Aligned with storage.js)
+    const getRiskInfo = (attended, total) => {
+        const percentage = total > 0 ? Math.round((attended / total) * 100) : 0;
+        const totalExpectedSessions = 40; 
+        const remainingSessions = Math.max(0, totalExpectedSessions - total);
+        const currentRate = total > 0 ? (attended / total) : 0;
+        const predictedAttended = attended + (remainingSessions * currentRate);
+        const predictedPercentage = Math.round((predictedAttended / totalExpectedSessions) * 100);
+
+        let riskLevel = 'Low';
+        if (percentage < 70 || predictedPercentage < 75) riskLevel = 'High';
+        else if (percentage < 80 || predictedPercentage < 85) riskLevel = 'Medium';
+
+        return { predictedPercentage, riskLevel };
     };
 
     // Voice Greeting Logic
@@ -314,7 +322,7 @@ export default function StudentDashboard() {
                             <div className="space-y-4">
                                 {stats.map((stat, index) => {
                                     const subjectLeaves = studentLeaves.filter(l => l.subject === stat.subject).length;
-                                    const predicted = predictAttendance(stat.attended, stat.total);
+                                    const { predictedPercentage, riskLevel } = getRiskInfo(stat.attended, stat.total);
                                     const isLow = stat.percentage < 75;
 
                                     return (
@@ -323,9 +331,18 @@ export default function StudentDashboard() {
                                                 <div className="space-y-0.5">
                                                     <h3 className="text-sm font-bold text-white leading-tight flex items-center gap-2">
                                                         {stat.subject}
-                                                        {isLow && <span className="bg-rose-500 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter">Warning</span>}
+                                                        {riskLevel === 'High' && <span className="bg-rose-500 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter">Critical Risk</span>}
                                                     </h3>
-                                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{stat.teacher}</p>
+                                                    <div className="flex items-center space-x-2 mt-0.5">
+                                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{stat.teacher}</p>
+                                                        <div className={`px-1.5 py-0.5 rounded-full border text-[7px] font-black tracking-widest uppercase flex items-center space-x-1 ${
+                                                            riskLevel === 'High' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : 
+                                                            riskLevel === 'Medium' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 
+                                                            'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                                                        }`}>
+                                                            <span>AI: {riskLevel}</span>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                                 <div className={`px-3 py-1 rounded-full border text-[10px] font-black tracking-widest ${getStatusColor(stat.percentage)}`}>
                                                     {stat.percentage}%
@@ -355,7 +372,7 @@ export default function StudentDashboard() {
                                                 <div className="flex justify-between items-center pt-2 border-t border-zinc-800/50">
                                                     <div className="flex items-center space-x-2">
                                                         <Activity className="w-3 h-3 text-indigo-400" />
-                                                        <span className="text-[9px] font-bold text-zinc-400">Projected: <span className="text-zinc-200">{predicted}%</span></span>
+                                                        <span className="text-[9px] font-bold text-zinc-400">Projected: <span className="text-zinc-200">{predictedPercentage}%</span></span>
                                                     </div>
                                                     {subjectLeaves > 0 && (
                                                         <div className="flex items-center space-x-1">

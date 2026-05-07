@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
-import { getStudents, getPeriods, saveLog, getCurrentTeacher, getLogs } from '../utils/storage';
+import { getStudents, getPeriods, saveBatchLogs, getCurrentTeacher, getLogs } from '../utils/storage';
 
 export default function ManualAttendance() {
     const navigate = useNavigate();
@@ -26,7 +26,7 @@ export default function ManualAttendance() {
         setAttendanceState(prev => ({ ...prev, [id]: status }));
     };
 
-    const handleSaveLog = () => {
+    const handleSaveLog = async () => {
         if (!selectedPeriod) {
             alert('Please select a period first!');
             return;
@@ -38,12 +38,12 @@ export default function ManualAttendance() {
             const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const day = now.toLocaleDateString([], { weekday: 'long' });
             
-            let markedCount = 0;
+            const logsToSave = [];
 
             students.forEach(student => {
                 const status = attendanceState[student.id];
                 if (status === 'present' || status === 'late') {
-                    const logData = {
+                    logsToSave.push({
                         studentName: student.name,
                         studentId: student.id,
                         period: selectedPeriod,
@@ -52,19 +52,21 @@ export default function ManualAttendance() {
                         time,
                         day,
                         isLate: status === 'late',
-                        location: null, // manual override so no geolocation
+                        location: null, 
                         isManual: true
-                    };
-                    saveLog(logData);
-                    markedCount++;
+                    });
                 }
             });
 
-            setTimeout(() => {
+            if (logsToSave.length > 0) {
+                const result = await saveBatchLogs(logsToSave);
                 setLoading(false);
-                alert(`Successfully logged ${markedCount} present/late students!`);
+                alert(`Successfully logged ${result.count} students!`);
                 navigate('/dashboard');
-            }, 800);
+            } else {
+                setLoading(false);
+                alert('No students marked as present or late.');
+            }
         }
     };
 
