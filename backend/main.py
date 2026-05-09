@@ -60,6 +60,10 @@ class LeaveStatusUpdate(BaseModel):
 
 # --- Routes ---
 
+@app.get("/")
+def read_root():
+    return {"message": "FaceRoll API is running"}
+
 # 1. Students
 @app.get("/api/students")
 def get_students(db: Session = Depends(get_db)):

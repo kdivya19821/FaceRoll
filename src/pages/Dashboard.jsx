@@ -1,669 +1,372 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, BookOpen, Trash2, PieChart, List, UserCheck, AlertCircle, BarChart3, MapPin, TrendingUp, Landmark, Download, Database, FileText } from 'lucide-react';
-import { getLogs, clearLogs, getAttendanceStats, getCurrentTeacher, getStudents, getPeriods, PERIOD_TIMINGS } from '../utils/storage';
 import { 
-    ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, 
-    Cell, PieChart as RePieChart, Pie, Legend 
+    ArrowLeft, Download, Database, Trash2, FileText, 
+    LayoutDashboard, Users, BookOpen, BarChart3, Settings, 
+    LogOut, Search, Bell, Calendar, UserCheck, Activity,
+    TrendingUp, AlertCircle, Clock
+} from 'lucide-react';
+import { 
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+    AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
+import { getLogs, clearLogs, getStudents, TEACHER_SUBJECTS, getCurrentTeacher, logout } from '../utils/storage';
 
 export default function Dashboard() {
     const navigate = useNavigate();
-    const teacher = getCurrentTeacher();
-    const [viewMode, setViewMode] = useState('recent'); // 'recent' or 'stats'
-    const [logs, setLogs] = useState(getLogs().filter(l => l.teacher === teacher).reverse());
-    const [timeframe, setTimeframe] = useState('all'); // 'all', 'weekly', 'monthly'
+    const teacherName = getCurrentTeacher();
+    const teacherSubjects = teacherName ? TEACHER_SUBJECTS[teacherName] : [];
     
-    // Calculate cutoff date once outside the loop
-    const now = new Date();
-    const days = timeframe === 'weekly' ? 7 : timeframe === 'monthly' ? 30 : 0;
-    const cutoffDate = timeframe !== 'all' ? new Date(now.setDate(now.getDate() - days)) : null;
+    const [logs, setLogs] = useState([]);
+    const [selectedSubject, setSelectedSubject] = useState('all');
+    const [timeframe, setTimeframe] = useState('all');
+    const [searchQuery, setSearchQuery] = useState('');
 
-    // Filtered logs based on selected timeframe
-    const filteredLogs = timeframe === 'all' 
-        ? logs 
-        : logs.filter(log => {
-            const logDate = new Date(log.timestamp || log.fullDate);
-            return logDate >= cutoffDate;
-        });
+    useEffect(() => {
+        setLogs(getLogs());
+    }, []);
 
-    const stats = getAttendanceStats(timeframe);
-
-    // Calculate total sessions taken by teacher in this timeframe
-    const totalTeacherSessions = Array.from(new Set(filteredLogs.map(l => `${l.period}-${l.fullDate}`))).length;
-
-    const handleClear = () => {
-        if (confirm('Are you sure you want to delete all attendance records? This cannot be undone.')) {
-            clearLogs();
-            setLogs([]);
-            window.location.reload(); // Refresh stats
+    const filteredLogs = useMemo(() => {
+        let l = [...logs];
+        if (selectedSubject !== 'all') {
+            l = l.filter(log => log.period === selectedSubject);
         }
-    };
-
-    const handleExport = () => {
-        if (logs.length === 0) {
-            alert("No records to export!");
-            return;
+        if (searchQuery) {
+            l = l.filter(log => 
+                log.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                log.studentId.toString().includes(searchQuery)
+            );
         }
+        return l.reverse();
+    }, [logs, selectedSubject, searchQuery]);
 
-        const headers = ["Student ID", "Name", "Subject", "Teacher", "Date", "Time", "Day", "Is Late", "Latitude", "Longitude"];
-        const csvRows = logs.map(log => [
-            log.studentId,
-            `"${log.studentName}"`,
-            `"${log.period}"`,
-            `"${log.teacher}"`,
-            log.fullDate,
-            log.time,
-            log.day,
-            log.isLate ? "YES" : "NO",
-            log.location?.lat || "N/A",
-            log.location?.lng || "N/A"
-        ].join(","));
+    const stats = useMemo(() => {
+        const total = getStudents().length;
+        const presentCount = new Set(filteredLogs.map(l => l.studentId)).size;
+        const rate = total > 0 ? Math.round((presentCount / total) * 100) : 0;
+        return { total, present: presentCount, rate };
+    }, [filteredLogs]);
 
-        const csvContent = [headers.join(","), ...csvRows].join("\n");
-        downloadCSV(csvContent, `Attendance_Raw_Logs_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`);
-    };
+    const chartData = [
+        { name: 'Mon', value: 85 },
+        { name: 'Tue', value: 88 },
+        { name: 'Wed', value: 92 },
+        { name: 'Thu', value: 94 },
+        { name: 'Fri', value: 90 },
+        { name: 'Sat', value: 95 },
+        { name: 'Sun', value: 89 },
+    ];
 
-    const handleExportStats = () => {
-        if (stats.length === 0) {
-            alert("No statistics to export!");
-            return;
-        }
+    const riskData = [
+        { name: 'Cat', value: 40 },
+        { name: 'Low', value: 60 },
+        { name: 'Eng', value: 45 },
+        { name: 'Bio', value: 75 },
+        { name: 'Arts', value: 65 },
+        { name: 'Trend', value: 90 },
+    ];
 
-        // Sort by subject then by student name
-        const sortedStats = [...stats].sort((a, b) => {
-            const subjectCompare = a.subject.localeCompare(b.subject);
-            if (subjectCompare !== 0) return subjectCompare;
-            return a.studentName.localeCompare(b.studentName);
-        });
-
-        const headers = ["Subject", "Student ID", "Name", "Attended Classes", "Total Sessions", "Attendance Percentage"];
-        const csvRows = [];
-        csvRows.push(headers.join(","));
-
-        let currentSubject = "";
-        sortedStats.forEach(s => {
-            // Add a header and spacing when the subject changes
-            if (s.subject !== currentSubject) {
-                if (currentSubject !== "") {
-                    csvRows.push(""); // Add an empty row between subjects
-                }
-                csvRows.push(`"SECTION: ${s.subject.toUpperCase()} REPORT"`);
-                currentSubject = s.subject;
-            }
-
-            csvRows.push([
-                `"${s.subject}"`,
-                s.studentId,
-                `"${s.studentName}"`,
-                s.attended,
-                s.total,
-                `"${s.percentage}%"`
-            ].join(","));
-        });
-
-        const csvContent = csvRows.join("\n");
-        downloadCSV(csvContent, `Attendance_Subject_Summary_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`);
-    };
-
-    const downloadCSV = (content, filename) => {
-        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const getStatusColor = (percentage) => {
-        if (percentage >= 75) return 'text-emerald-400 bg-emerald-400/10 border-emerald-500/20';
-        if (percentage >= 50) return 'text-amber-400 bg-amber-400/10 border-amber-500/20';
-        return 'text-rose-400 bg-rose-400/10 border-rose-500/20';
-    };
-
-    const getBarColor = (percentage) => {
-        if (percentage >= 75) return 'bg-emerald-500';
-        if (percentage >= 50) return 'bg-amber-500';
-        return 'bg-rose-500';
-    };
-
-    const generateHeatmapData = (logsData, daysCount = 61) => {
-        const data = [];
-        const now = new Date();
-        for (let i = daysCount - 1; i >= 0; i--) {
-            const d = new Date(now);
-            d.setDate(d.getDate() - i);
-            const toDateStringStr = d.toDateString(); 
-            const count = logsData.filter(l => l.fullDate === toDateStringStr).length;
-            data.push({
-                date: toDateStringStr,
-                count
-            });
-        }
-        return data;
+    const handleLogout = () => {
+        logout();
+        navigate('/login');
     };
 
     return (
-        <div className="flex flex-col h-[100dvh] bg-zinc-950 p-4 animate-in fade-in duration-300 overflow-hidden">
-            <div className="flex items-center justify-between mb-6 px-2 mt-2">
-                <button onClick={() => navigate('/')} className="p-2 bg-zinc-800/80 rounded-full hover:bg-zinc-700 transition border border-zinc-700">
-                    <ArrowLeft className="w-5 h-5 text-zinc-300" />
-                </button>
-                <h2 className="text-xl font-bold text-white tracking-tight">Analytics</h2>
-                <div className="flex items-center space-x-2">
-                    <button onClick={() => navigate('/database')} className="p-2 bg-indigo-500/10 rounded-full hover:bg-indigo-500/20 transition group border border-indigo-500/20" title="DB Explorer">
-                        <Database className="w-5 h-5 text-indigo-500 group-hover:scale-110 transition-transform" />
-                    </button>
-                    
-                    {/* Raw Logs Export */}
-                    <button 
-                        onClick={handleExport} 
-                        className="p-2 bg-emerald-500/10 rounded-full hover:bg-emerald-500/20 transition group border border-emerald-500/20"
-                        title="Export Raw Logs"
-                    >
-                        <Download className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" />
-                    </button>
+        <div className="flex h-screen w-full bg-[#0B0F19] text-white overflow-hidden font-sans">
+            
+            {/* Sidebar */}
+            <aside className="w-64 flex flex-col border-r border-white/5 bg-[#0B0F19] z-20">
+                <div className="p-8">
+                    <div className="flex items-center space-x-3 mb-10">
+                        <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.4)]">
+                            <span className="font-black text-xl text-white">F</span>
+                        </div>
+                        <h1 className="text-xl font-black tracking-tight text-white">FaceRoll <span className="text-indigo-400 font-medium">AI</span></h1>
+                    </div>
 
-                    {/* Summary Export */}
-                    <button 
-                        onClick={handleExportStats} 
-                        className="p-2 bg-amber-500/10 rounded-full hover:bg-amber-500/20 transition group border border-amber-500/20 flex items-center space-x-1 px-3"
-                        title="Export Subject Summary"
-                    >
-                        <FileText className="w-5 h-5 text-amber-500 group-hover:scale-110 transition-transform" />
-                        <span className="text-[8px] font-black text-amber-500 uppercase tracking-tighter">Summary</span>
-                    </button>
+                    <nav className="space-y-2">
+                        <NavItem icon={<LayoutDashboard size={20}/>} label="Dashboard" active />
+                        <NavItem icon={<Calendar size={20}/>} label="Attendance" />
+                        <NavItem icon={<Users size={20}/>} label="Students" onClick={() => navigate('/students')} />
+                        <NavItem icon={<BookOpen size={20}/>} label="Classes" />
+                        <NavItem icon={<BarChart3 size={20}/>} label="Analytics" />
+                        <NavItem icon={<FileText size={20}/>} label="Reports" />
+                        <NavItem icon={<Settings size={20}/>} label="Settings" />
+                    </nav>
+                </div>
 
-                    <button onClick={handleClear} className="p-2 bg-rose-500/10 rounded-full hover:bg-rose-500/20 transition group border border-rose-500/20">
-                        <Trash2 className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
+                <div className="mt-auto p-8 border-t border-white/5">
+                    <div className="flex items-center space-x-3 mb-6 p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
+                        <div className="w-10 h-10 rounded-full bg-indigo-500/20 border border-indigo-500/30 overflow-hidden">
+                            <img src={`https://ui-avatars.com/api/?name=${teacherName}&background=6366f1&color=fff`} alt="Avatar" />
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                            <p className="text-sm font-bold truncate">{teacherName}</p>
+                            <p className="text-[10px] text-white/40 uppercase font-black">Professor</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={handleLogout}
+                        className="w-full flex items-center space-x-3 text-rose-400 hover:text-rose-300 transition-colors p-2"
+                    >
+                        <LogOut size={20} />
+                        <span className="font-bold text-sm">Sign Out</span>
                     </button>
                 </div>
-            </div>
+            </aside>
 
-            {/* Global Timeframe Selector */}
-            <div className="flex space-x-2 mb-6 px-1">
-                {['all', 'monthly', 'weekly'].map((tf) => {
-                    let activeColors = 'bg-emerald-500 border-emerald-500 text-black shadow-xl shadow-emerald-500/20';
-                    if (tf === 'monthly') activeColors = 'bg-amber-500 border-amber-500 text-black shadow-xl shadow-amber-500/20';
-                    if (tf === 'weekly') activeColors = 'bg-cyan-500 border-cyan-500 text-black shadow-xl shadow-cyan-500/20';
-                    
-                    return (
-                        <button
-                            key={tf}
-                            onClick={() => setTimeframe(tf)}
-                            className={`flex-1 py-3 px-3 text-[10px] font-black rounded-2xl border transition-all duration-300 ${
-                                timeframe === tf
-                                    ? activeColors
-                                    : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
-                            }`}
-                        >
-                            {tf === 'all' ? 'OVERALL' : tf === 'monthly' ? 'THIS MONTH' : 'THIS WEEK'}
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* Dynamic Timeframe Heading */}
-            <div className="flex items-center space-x-3 mb-4 px-2">
-                <div className={`h-6 w-1 rounded-full ${
-                    timeframe === 'all' ? 'bg-emerald-500' :
-                    timeframe === 'monthly' ? 'bg-amber-500' :
-                    'bg-cyan-500'
-                }`}></div>
-                <h3 className="text-sm font-black text-white uppercase tracking-widest">
-                    {timeframe === 'all' ? 'Overall Attendance' : timeframe === 'monthly' ? 'Monthly Report' : 'Weekly Summary'}
-                </h3>
-            </div>
-
-            {/* Toggle Switch */}
-            <div className="flex bg-zinc-900/80 rounded-2xl p-1 mb-6 border border-zinc-800 mx-1">
-                <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'recent' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    onClick={() => setViewMode('recent')}
-                >
-                    <List className="w-3.5 h-3.5" />
-                    <span>LOGS</span>
-                </button>
-                <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'stats' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    onClick={() => setViewMode('stats')}
-                >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    <span>STATS</span>
-                </button>
-                <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'sessions' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    onClick={() => setViewMode('sessions')}
-                >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>SESSIONS</span>
-                </button>
-                <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'reports' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    onClick={() => setViewMode('reports')}
-                >
-                    <BarChart3 className="w-3.5 h-3.5" />
-                    <span>REPORTS</span>
-                </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-1 pb-10 scrollbar-hide">
-                {viewMode === 'sessions' ? (
-                    (() => {
-                        const allStudentsCount = getStudents().length;
-                        // Group logs by session (subject + date)
-                        const teacherPeriods = getPeriods();
-                        const sessions = {};
-                        filteredLogs.forEach(log => {
-                            const key = `${log.period}-${log.fullDate}`;
-                            if (!sessions[key]) {
-                                // Find period time
-                                const periodInfo = teacherPeriods.find(p => (typeof p === 'object' ? p.periodName : p) === log.period);
-                                let timeStr = 'N/A';
-                                if (periodInfo && typeof periodInfo === 'object' && periodInfo.startTime) {
-                                    timeStr = `${periodInfo.startTime} - ${periodInfo.endTime}`;
-                                } else if (PERIOD_TIMINGS[log.period]) {
-                                    timeStr = PERIOD_TIMINGS[log.period];
-                                }
-
-                                sessions[key] = {
-                                    subject: log.period,
-                                    date: log.fullDate,
-                                    present: new Set(),
-                                    day: log.day,
-                                    timeRange: timeStr
-                                };
-                            }
-                            sessions[key].present.add(log.studentId);
-                        });
-
-                        const sessionList = Object.values(sessions).sort((a, b) => new Date(b.date) - new Date(a.date));
-
-                        return sessionList.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
-                                <Landmark className="w-12 h-12 mb-4 text-zinc-600" />
-                                <p className="text-lg font-semibold">No sessions recorded</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                {sessionList.map((session, idx) => {
-                                    const presentCount = session.present.size;
-                                    const absentCount = Math.max(0, allStudentsCount - presentCount);
-                                    return (
-                                        <div key={idx} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl">
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div>
-                                                    <h3 className="text-base font-bold text-white">{session.subject}</h3>
-                                                    <div className="flex items-center space-x-2 mt-0.5">
-                                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{session.day}, {session.date}</p>
-                                                        <span className="text-zinc-700">•</span>
-                                                        <div className="flex items-center space-x-1">
-                                                            <Clock className="w-3 h-3 text-indigo-400" />
-                                                            <p className="text-[10px] text-indigo-400 font-black tracking-widest">{session.timeRange}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
-                                                    <span className="text-[10px] font-black text-indigo-400">SESSION #{sessionList.length - idx}</span>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-3 flex flex-col items-center">
-                                                    <p className="text-[9px] font-black text-emerald-500/60 uppercase mb-1">Present</p>
-                                                    <p className="text-xl font-black text-emerald-400">{presentCount}</p>
-                                                </div>
-                                                <div className="bg-rose-500/5 border border-rose-500/10 rounded-2xl p-3 flex flex-col items-center">
-                                                    <p className="text-[9px] font-black text-rose-500/60 uppercase mb-1">Absent</p>
-                                                    <p className="text-xl font-black text-rose-400">{absentCount}</p>
-                                                </div>
-                                            </div>
-                                            <div className="mt-4 w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden flex">
-                                                <div className="h-full bg-emerald-500" style={{ width: `${(presentCount / allStudentsCount) * 100}%` }}></div>
-                                                <div className="h-full bg-rose-500" style={{ width: `${(absentCount / allStudentsCount) * 100}%` }}></div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        );
-                    })()
-                ) : viewMode === 'recent' ? (
-                    filteredLogs.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center opacity-40 px-10 text-center">
-                            <BookOpen className="w-12 h-12 mb-4 text-zinc-600" />
-                            <p className="text-lg font-semibold">No records found for<br/>{teacher || 'Unknown Teacher'}</p>
-                            <p className="text-xs text-zinc-500 mt-1">{timeframe === 'all' ? 'Start marking attendance to see logs here.' : `No activity in the last ${timeframe === 'weekly' ? '7' : '30'} days.`}</p>
+            {/* Main Content */}
+            <main className="flex-1 flex flex-col overflow-y-auto bg-[#0B0F19]">
+                
+                {/* Top Header */}
+                <header className="h-20 flex items-center justify-between px-10 border-b border-white/5 sticky top-0 bg-[#0B0F19]/80 backdrop-blur-md z-10">
+                    <div className="flex items-center space-x-4 flex-1">
+                        <div className="relative w-96 group">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-indigo-400 transition-colors" size={18} />
+                            <input 
+                                type="text" 
+                                placeholder="Search students, classes, or logs..." 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-12 pr-4 text-sm text-white focus:border-indigo-500/50 outline-none transition-all"
+                            />
                         </div>
-                    ) : (
-                        filteredLogs.map((log, index) => (
-                            <div key={index} className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 shadow-xl mb-4 animate-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${index * 50}ms` }}>
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="space-y-0.5">
-                                        <h3 className="text-lg font-bold text-white leading-tight">
-                                            {log.studentName}
-                                        </h3>
-                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">ID: #{log.studentId}</p>
-                                    </div>
-                                    <div className="bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
-                                        <p className="text-[10px] font-black text-indigo-400 tracking-wider">
-                                            {log.period}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-wrap gap-4 border-t border-zinc-800/80 pt-4">
-                                    <div className="flex items-center space-x-2 text-zinc-400">
-                                        <div className="p-1.5 bg-zinc-800 rounded-lg">
-                                            <Clock className="w-3.5 h-3.5 text-zinc-500" />
-                                        </div>
-                                        <span className="text-xs font-semibold">{log.time}</span>
-                                        {log.isLate && (
-                                            <span className="ml-1 bg-rose-500/10 text-rose-500 text-[9px] font-black px-2 py-0.5 rounded-full border border-rose-500/20">LATE</span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center space-x-2 text-zinc-400">
-                                        <div className="p-1.5 bg-zinc-800 rounded-lg">
-                                            <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                                        </div>
-                                        <span className="text-xs font-semibold">{log.day}</span>
-                                    </div>
-                                    {log.location && (
-                                        <a 
-                                            href={`https://www.google.com/maps?q=${log.location.lat},${log.location.lng}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center space-x-2 text-emerald-400 hover:text-emerald-300 transition"
-                                        >
-                                            <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                                                <MapPin className="w-3.5 h-3.5" />
-                                            </div>
-                                            <span className="text-xs font-bold">Map</span>
-                                        </a>
-                                    )}
-                                </div>
-                            </div>
-                        ))
-                    )
-                ) : viewMode === 'stats' ? (
-                    stats.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
-                            <AlertCircle className="w-12 h-12 mb-4 text-zinc-600" />
-                            <p className="text-lg font-semibold">No stats available</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-6 pb-6">
-                            {/* Summary Card for Teacher */}
-                            <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-6 shadow-xl shadow-indigo-500/20 mb-2 relative overflow-hidden">
-                                <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
-                                <div className="relative z-10">
-                                    <p className="text-[10px] font-black text-indigo-100 uppercase tracking-[0.2em] mb-1 opacity-80">Teacher Workload</p>
-                                    <div className="flex items-end space-x-2">
-                                        <h4 className="text-4xl font-black text-white">{totalTeacherSessions}</h4>
-                                        <p className="text-xs font-bold text-indigo-100 mb-1.5 opacity-90">Classes Taken</p>
-                                    </div>
-                                    <div className="mt-4 flex items-center space-x-2 bg-black/20 backdrop-blur-sm rounded-xl p-2.5 border border-white/10">
-                                        <TrendingUp className="w-4 h-4 text-emerald-400" />
-                                        <p className="text-[10px] font-bold text-indigo-50 text-white/90">
-                                            {timeframe === 'all' ? 'Total sessions across all recorded subjects' : 
-                                             timeframe === 'monthly' ? 'Total sessions taken in the last 30 days' : 
-                                             'Total sessions taken in the last 7 days'}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center space-x-3 mb-2 px-2 mt-8">
-                                <div className="h-4 w-1 rounded-full bg-indigo-500"></div>
-                                <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sessions by Subject</h3>
-                            </div>
-
-                            {/* Summary Header: Total Classes Taken per Subject */}
-                            <div className="grid grid-cols-2 gap-3 mb-2">
-                                {Array.from(new Set(stats.map(s => s.subject))).map(subject => {
-                                    const subjectStats = stats.filter(s => s.subject === subject);
-                                    const totalClasses = subjectStats.length > 0 ? subjectStats[0].total : 0;
-                                    return (
-                                        <div key={subject} className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex flex-col items-center justify-center space-y-1 shadow-lg">
-                                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{subject}</p>
-                                            <p className="text-2xl font-black text-emerald-400">{totalClasses}</p>
-                                            <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-tighter text-center">Total Sessions</p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            <div className="h-px bg-zinc-900 mx-2"></div>
-
-                            {/* Individual Student Stats Grouped by Subject */}
-                            <div className="space-y-10">
-                                {Array.from(new Set(stats.map(s => s.subject))).map(subject => (
-                                    <div key={subject} className="space-y-4">
-                                        <div className="flex items-center space-x-3 mb-4 px-2">
-                                            <div className="h-3 w-3 rounded-full bg-orange-500 shadow-lg shadow-orange-500/20"></div>
-                                            <h3 className="text-xs font-black text-zinc-400 uppercase tracking-[0.2em]">{subject} Report</h3>
-                                        </div>
-                                        
-                                        <div className="space-y-4">
-                                            {stats.filter(s => s.subject === subject).map((stat, index) => (
-                                                <div key={index} className="bg-zinc-900 border border-zinc-800/80 rounded-3xl p-5 shadow-xl animate-in fade-in slide-in-from-right-4 duration-500" style={{ animationDelay: `${index * 30}ms` }}>
-                                                    <div className="flex justify-between items-start mb-5">
-                                                        <div className="space-y-0.5">
-                                                            <div className="flex items-center space-x-2">
-                                                                <h3 className="text-lg font-bold text-white leading-tight">{stat.studentName}</h3>
-                                                                {/* AI Risk Badge */}
-                                                                <div className={`px-2 py-0.5 rounded-full border text-[8px] font-black tracking-widest uppercase flex items-center space-x-1 ${
-                                                                    stat.riskLevel === 'High' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : 
-                                                                    stat.riskLevel === 'Medium' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 
-                                                                    'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                                                                }`}>
-                                                                    <div className={`w-1 h-1 rounded-full ${stat.riskLevel === 'High' ? 'bg-rose-500 animate-pulse' : stat.riskLevel === 'Medium' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
-                                                                    <span>AI RISK: {stat.riskLevel}</span>
-                                                                </div>
-                                                            </div>
-                                                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Enrollment ID: #{stat.studentId}</p>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className={`px-3 py-1 rounded-full border text-[10px] font-black tracking-widest ${getStatusColor(stat.percentage)}`}>
-                                                                {stat.percentage}%
-                                                            </div>
-                                                            <p className="text-[8px] font-black text-zinc-600 mt-1 uppercase tracking-tighter">Current</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-4 mb-5">
-                                                        <div className="bg-zinc-950/50 rounded-2xl p-3 border border-zinc-800/50">
-                                                            <p className="text-[9px] font-black text-zinc-500 uppercase mb-1">Current Trend</p>
-                                                            <div className="flex items-end space-x-1">
-                                                                <span className="text-lg font-black text-white">{stat.attended}</span>
-                                                                <span className="text-[10px] font-bold text-zinc-600 mb-0.5">/ {stat.total} Classes</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="bg-indigo-500/5 rounded-2xl p-3 border border-indigo-500/10 relative overflow-hidden">
-                                                            <div className="absolute top-0 right-0 p-1 opacity-20">
-                                                                <TrendingUp className="w-8 h-8 text-indigo-400" />
-                                                            </div>
-                                                            <p className="text-[9px] font-black text-indigo-400/60 uppercase mb-1">AI Predicted</p>
-                                                            <div className="flex items-end space-x-1">
-                                                                <span className="text-lg font-black text-indigo-400">{stat.predictedPercentage}%</span>
-                                                                <span className="text-[8px] font-bold text-indigo-400/40 mb-1 uppercase">End-Term</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-3">
-                                                        <div className="flex justify-between items-end text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                                                            <span>Attendance Progress</span>
-                                                            <span className="text-zinc-300">{stat.percentage}% COMPLETE</span>
-                                                        </div>
-                                                        <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden p-0.5 border border-zinc-700/30">
-                                                            <div 
-                                                                className={`h-full transition-all duration-1000 ease-out rounded-full ${getBarColor(stat.percentage)}`}
-                                                                style={{ width: `${stat.percentage}%` }}
-                                                            ></div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )
-                ) : (
-                    /* Graphical Reports View */
-                    <div className="space-y-6 pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {stats.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
-                                <AlertCircle className="w-12 h-12 mb-4 text-zinc-600" />
-                                <p className="text-lg font-semibold">No data for reports</p>
-                            </div>
-                        ) : (
-                            <>
-                                {/* Activity Heatmap */}
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-500 delay-100">
-                                    <div className="flex items-center space-x-3 mb-6">
-                                        <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                                            <Calendar className="w-5 h-5 text-emerald-400" />
-                                        </div>
-                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Activity Heatmap</h3>
-                                    </div>
-                                    
-                                    <div className="flex flex-wrap gap-1.5 justify-start">
-                                        {generateHeatmapData(logs, 61).map((day, idx) => {
-                                            let colorClass = 'bg-zinc-800';
-                                            if (day.count > 0 && day.count <= 2) colorClass = 'bg-emerald-500/30';
-                                            else if (day.count > 2 && day.count <= 6) colorClass = 'bg-emerald-500/60';
-                                            else if (day.count > 6) colorClass = 'bg-emerald-500';
-                                            
-                                            return (
-                                                <div 
-                                                    key={idx} 
-                                                    className={`w-3 h-3 rounded-sm ${colorClass} group relative cursor-pointer hover:ring-1 hover:ring-zinc-400 transition-all`}
-                                                >
-                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-[60]">
-                                                        <div className="bg-zinc-800 border border-zinc-700 text-white text-[9px] font-bold px-2 py-1 rounded shadow-xl whitespace-nowrap">
-                                                            {day.date} • <span className="text-emerald-400">{day.count} Logs</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    
-                                    <div className="flex justify-between mt-5 px-1 items-center">
-                                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Last 60 Days</span>
-                                        <div className="flex items-center space-x-1">
-                                            <span className="text-[9px] font-bold text-zinc-500 mr-1">LESS</span>
-                                            <div className="w-2.5 h-2.5 rounded-sm bg-zinc-800"></div>
-                                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/30"></div>
-                                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/60"></div>
-                                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div>
-                                            <span className="text-[9px] font-bold text-zinc-500 ml-1">MORE</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Bar Chart: Attendance % per Student */}
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
-                                    <div className="flex items-center space-x-3 mb-6">
-                                        <div className="p-2 bg-indigo-500/10 rounded-xl">
-                                            <TrendingUp className="w-5 h-5 text-indigo-400" />
-                                        </div>
-                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Attendance % per Student</h3>
-                                    </div>
-                                    <div className="h-64 w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={stats}>
-                                                <XAxis dataKey="studentName" hide />
-                                                <YAxis domain={[0, 100]} hide />
-                                                <Tooltip 
-                                                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
-                                                    itemStyle={{ color: '#818cf8', fontWeight: 'bold' }}
-                                                />
-                                                <Bar dataKey="percentage" radius={[4, 4, 0, 0]}>
-                                                    {stats.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={entry.percentage >= 75 ? '#10b981' : entry.percentage >= 50 ? '#f59e0b' : '#f43f5e'} />
-                                                    ))}
-                                                </Bar>
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    <div className="flex justify-between mt-4 px-2">
-                                        <div className="flex items-center space-x-2">
-                                            <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                                            <span className="text-[9px] font-bold text-zinc-500 tracking-tighter">GOOD (75%+)</span>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-                                            <span className="text-[9px] font-bold text-zinc-500 tracking-tighter">AVERAGE</span>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
-                                            <span className="text-[9px] font-bold text-zinc-500 tracking-tighter">LOW</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Pie Chart: Late vs On-time Ratio */}
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
-                                    <div className="flex items-center space-x-3 mb-6">
-                                        <div className="p-2 bg-emerald-500/10 rounded-xl">
-                                            <PieChart className="w-5 h-5 text-emerald-400" />
-                                        </div>
-                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Entry Performance</h3>
-                                    </div>
-                                    <div className="h-64 w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <RePieChart>
-                                                <Pie
-                                                    data={[
-                                                        { name: 'On-time', value: filteredLogs.filter(l => !l.isLate).length },
-                                                        { name: 'Late', value: filteredLogs.filter(l => l.isLate).length }
-                                                    ]}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    innerRadius={60}
-                                                    outerRadius={80}
-                                                    paddingAngle={5}
-                                                    dataKey="value"
-                                                >
-                                                    <Cell fill="#10b981" />
-                                                    <Cell fill="#f43f5e" />
-                                                </Pie>
-                                                <Tooltip 
-                                                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
-                                                />
-                                                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingTop: '20px' }} />
-                                            </RePieChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-
-                                {/* Class Distribution */}
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
-                                    <div className="flex items-center space-x-3 mb-6">
-                                        <div className="p-2 bg-amber-500/10 rounded-xl">
-                                            <Landmark className="w-5 h-5 text-amber-400" />
-                                        </div>
-                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Subject Logs Summary</h3>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {Array.from(new Set(filteredLogs.map(l => l.period))).map(period => (
-                                            <div key={period} className="flex items-center justify-between bg-zinc-950/50 p-3 rounded-2xl border border-zinc-800">
-                                                <span className="text-xs font-bold text-zinc-300">{period}</span>
-                                                <span className="text-xs font-black text-indigo-400">{filteredLogs.filter(l => l.period === period).length} Logs</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </>
-                        )}
                     </div>
-                )}
+
+                    <div className="flex items-center space-x-4">
+                        <button className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all relative">
+                            <Bell size={20} />
+                            <span className="absolute top-2 right-2 w-2 h-2 bg-indigo-500 rounded-full border-2 border-[#0B0F19]"></span>
+                        </button>
+                        <div className="h-10 w-px bg-white/10 mx-2"></div>
+                        <div className="text-right">
+                            <p className="text-xs font-bold text-white/40 uppercase tracking-widest">{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                            <p className="text-sm font-black text-indigo-400">Term 2024</p>
+                        </div>
+                    </div>
+                </header>
+
+                <div className="p-10 space-y-10">
+                    
+                    {/* Welcome Row */}
+                    <div className="flex items-end justify-between">
+                        <div>
+                            <h2 className="text-3xl font-black tracking-tight mb-2 text-white">Professor Overview</h2>
+                            <p className="text-white/40 font-medium">Monitoring attendance and student performance metrics.</p>
+                        </div>
+                        <div className="flex space-x-3">
+                            <button className="flex items-center space-x-2 px-5 py-2.5 bg-white/5 border border-white/10 rounded-xl font-bold text-sm hover:bg-white/10 transition-all">
+                                <FileText size={18} />
+                                <span>Export Report</span>
+                            </button>
+                            <button 
+                                onClick={() => navigate('/database')}
+                                className="flex items-center space-x-2 px-5 py-2.5 bg-indigo-600 rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                            >
+                                <Database size={18} />
+                                <span>Manage Database</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Dashboard Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        
+                        {/* Overall Attendance Card */}
+                        <div className="glass-card rounded-[2rem] p-8 border border-white/10 flex flex-col items-center justify-center relative overflow-hidden bg-gradient-to-br from-indigo-500/5 to-transparent">
+                            <h3 className="text-lg font-black text-white/60 uppercase tracking-widest absolute top-8 left-8">Overall Attendance</h3>
+                            
+                            <div className="relative mt-4">
+                                <svg className="w-48 h-48">
+                                    <circle className="text-white/5" strokeWidth="12" stroke="currentColor" fill="transparent" r="80" cx="96" cy="96" />
+                                    <circle className="text-indigo-500 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]" strokeWidth="12" strokeDasharray={502} strokeDashoffset={502 - (502 * stats.rate) / 100} strokeLinecap="round" stroke="currentColor" fill="transparent" r="80" cx="96" cy="96" />
+                                </svg>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span className="text-4xl font-black tracking-tight">{stats.rate}%</span>
+                                    <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">(Active)</span>
+                                </div>
+                            </div>
+
+                            <div className="w-full mt-8 grid grid-cols-2 gap-4">
+                                <div className="text-center">
+                                    <p className="text-2xl font-black">{stats.present}</p>
+                                    <p className="text-xs font-bold text-emerald-400 flex items-center justify-center space-x-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                        <span>Marked</span>
+                                    </p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-2xl font-black">{stats.total - stats.present}</p>
+                                    <p className="text-xs font-bold text-rose-400 flex items-center justify-center space-x-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                        <span>Absent</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Daily Trend Chart */}
+                        <div className="lg:col-span-2 glass-card rounded-[2rem] p-8 border border-white/10 bg-[#161B26]">
+                            <div className="flex items-center justify-between mb-8">
+                                <h3 className="text-lg font-black text-white/60 uppercase tracking-widest">Daily Trend</h3>
+                                <div className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-white/40">%</div>
+                            </div>
+                            <div className="h-64 w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={chartData}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#ffffff30', fontSize: 12}} dy={10} />
+                                        <YAxis hide />
+                                        <Tooltip 
+                                            contentStyle={{backgroundColor: '#161B26', border: '1px solid #ffffff10', borderRadius: '12px', fontSize: '12px'}}
+                                            itemStyle={{color: '#6366f1'}}
+                                        />
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="value" 
+                                            stroke="#6366f1" 
+                                            strokeWidth={4} 
+                                            dot={{fill: '#6366f1', strokeWidth: 2, r: 4}} 
+                                            activeDot={{ r: 8, strokeWidth: 0 }}
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Risk Levels Chart */}
+                        <div className="lg:col-span-2 glass-card rounded-[2rem] p-8 border border-white/10 bg-[#161B26]">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h3 className="text-lg font-black text-white/60 uppercase tracking-widest">Risk Levels</h3>
+                                    <p className="text-xs text-white/30 font-medium">Students At-Risk (Low &lt; 80%)</p>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-3xl font-black">45</span>
+                                </div>
+                            </div>
+                            <div className="h-64 w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={riskData}>
+                                        <defs>
+                                            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/>
+                                                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#ffffff30', fontSize: 12}} dy={10} />
+                                        <YAxis hide />
+                                        <Tooltip 
+                                            contentStyle={{backgroundColor: '#161B26', border: '1px solid #ffffff10', borderRadius: '12px', fontSize: '12px'}}
+                                        />
+                                        <Area type="monotone" dataKey="value" stroke="#f43f5e" strokeWidth={4} fillOpacity={1} fill="url(#colorValue)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Stats Summary Column */}
+                        <div className="space-y-8">
+                            <StatCard icon={<UserCheck className="text-emerald-400" />} label="Top Attendees" value="12" sub="This Week" />
+                            <StatCard icon={<TrendingUp className="text-indigo-400" />} label="Class Growth" value="+14%" sub="Since last month" />
+                            <StatCard icon={<AlertCircle className="text-amber-400" />} label="Pending Leaves" value="03" sub="Requires attention" />
+                        </div>
+
+                    </div>
+
+                    {/* Recent Activity Table */}
+                    <div className="glass-card rounded-[2.5rem] p-10 border border-white/10 bg-[#161B26]">
+                        <div className="flex items-center justify-between mb-10">
+                            <div>
+                                <h3 className="text-2xl font-black text-white">Recent Activity Logs</h3>
+                                <p className="text-white/40 text-sm font-medium mt-1">Live feed of student authentication events.</p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <button className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-white/40 hover:text-white transition-all">
+                                    <Search size={20} />
+                                </button>
+                                <button className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-white/40 hover:text-white transition-all">
+                                    <Settings size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] border-b border-white/5">
+                                        <th className="pb-6 px-4">Student ID</th>
+                                        <th className="pb-6 px-4">Name</th>
+                                        <th className="pb-6 px-4">Class / Subject</th>
+                                        <th className="pb-6 px-4">Timestamp</th>
+                                        <th className="pb-6 px-4 text-right">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="text-sm">
+                                    {filteredLogs.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" className="py-20 text-center text-white/20 font-bold italic">No logs found for this period.</td>
+                                        </tr>
+                                    ) : (
+                                        filteredLogs.slice(0, 10).map((log, idx) => (
+                                            <tr key={idx} className="group border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                                                <td className="py-6 px-4 font-bold text-white/50">{log.studentId}</td>
+                                                <td className="py-6 px-4 font-black">{log.studentName}</td>
+                                                <td className="py-6 px-4 font-bold text-white/50">{log.period}</td>
+                                                <td className="py-6 px-4">
+                                                    <div className="flex items-center space-x-2 text-white/40">
+                                                        <Clock size={14} />
+                                                        <span className="font-medium">{log.time}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="py-6 px-4 text-right">
+                                                    <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                                        log.type === 'exit' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                                                    }`}>
+                                                        {log.type === 'exit' ? 'Present-Yellow' : 'Present-Green'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </main>
+        </div>
+    );
+}
+
+function NavItem({ icon, label, active = false, onClick }) {
+    return (
+        <button 
+            onClick={onClick}
+            className={`w-full flex items-center space-x-4 px-5 py-4 rounded-2xl transition-all ${
+                active 
+                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' 
+                    : 'text-white/40 hover:text-white hover:bg-white/5'
+            }`}
+        >
+            {icon}
+            <span className="font-bold text-sm tracking-wide">{label}</span>
+        </button>
+    );
+}
+
+function StatCard({ icon, label, value, sub }) {
+    return (
+        <div className="glass-card rounded-[2rem] p-6 border border-white/10 flex items-center space-x-4 hover:border-white/20 transition-all cursor-pointer group">
+            <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform">
+                {icon}
+            </div>
+            <div>
+                <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">{label}</p>
+                <h4 className="text-2xl font-black mt-0.5">{value}</h4>
+                <p className="text-[10px] font-bold text-white/20 mt-0.5">{sub}</p>
             </div>
         </div>
     );

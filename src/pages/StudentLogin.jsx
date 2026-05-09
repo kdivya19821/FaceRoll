@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import * as faceapi from '@vladmandic/face-api';
-import { ScanFace, LogIn, ArrowLeft } from 'lucide-react';
-import { loginStudent, getCurrentStudent, getStudents, getFaceDescriptors } from '../utils/storage';
+import { ScanFace, LogIn, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { loginStudent, getCurrentStudent, getStudents, getFaceDescriptors, STUDENT_PASSWORDS } from '../utils/storage';
 import CameraView from '../components/CameraView';
 import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
 
@@ -12,6 +12,9 @@ export default function StudentLogin() {
     const [selectedStudentId, setSelectedStudentId] = useState('');
     const [loadingModels, setLoadingModels] = useState(true);
     const [scanStatus, setScanStatus] = useState('Initializing Scanner...');
+    const [pin, setPin] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [loginError, setLoginError] = useState('');
 
     const cameraRef = useRef(null);
     const faceMatcherRef = useRef(null);
@@ -97,6 +100,14 @@ export default function StudentLogin() {
     const handleManualLogin = (e) => {
         e.preventDefault();
         if (!selectedStudentId) return;
+
+        // Security check for manual login
+        const correctPin = STUDENT_PASSWORDS[selectedStudentId];
+        if (pin !== correctPin) {
+            setLoginError('Invalid security PIN');
+            return;
+        }
+
         loginStudent(selectedStudentId);
         navigate('/student-dashboard', { replace: true });
     };
@@ -149,7 +160,11 @@ export default function StudentLogin() {
                         <label className="block text-sm font-semibold text-zinc-400 mb-2 ml-1">Or Select Name Manually</label>
                         <select
                             value={selectedStudentId}
-                            onChange={(e) => setSelectedStudentId(e.target.value)}
+                            onChange={(e) => {
+                                setSelectedStudentId(e.target.value);
+                                setLoginError('');
+                                setPin('');
+                            }}
                             disabled={autoLoginTriggered.current}
                             className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-2xl py-3.5 px-4 font-semibold outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all appearance-none"
                         >
@@ -159,11 +174,39 @@ export default function StudentLogin() {
                             ))}
                         </select>
                     </div>
+
+                    {selectedStudentId && !autoLoginTriggered.current && (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <label className="block text-sm font-semibold text-zinc-400 mb-2 ml-1">Enter Security Password</label>
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    value={pin}
+                                    onChange={(e) => {
+                                        setPin(e.target.value);
+                                        setLoginError('');
+                                    }}
+                                    placeholder="Enter password..."
+                                    className={`w-full bg-zinc-950 border ${loginError ? 'border-red-500/50' : 'border-zinc-800'} text-white rounded-2xl py-3.5 px-4 pr-12 font-semibold outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all`}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+                                >
+                                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                            </div>
+                            {loginError && (
+                                <p className="text-red-400 text-[10px] font-bold uppercase tracking-wider ml-1">{loginError}</p>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <button
                     type="submit"
-                    disabled={!selectedStudentId || autoLoginTriggered.current}
+                    disabled={!selectedStudentId || !pin || autoLoginTriggered.current}
                     className="w-full flex items-center justify-center space-x-3 p-4 rounded-[2rem] bg-emerald-500 text-black font-bold hover:bg-emerald-400 active:scale-95 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-50 disabled:active:scale-100"
                 >
                     <span>View My Dashboard</span>

@@ -25,8 +25,8 @@ const StudentProtectedRoute = ({ children }) => {
 function App() {
   return (
     <Router>
-      <div className="w-full min-h-screen bg-zinc-950 text-white font-sans selection:bg-indigo-500/30">
-        <main className="max-w-md mx-auto min-h-[100dvh] shadow-2xl bg-zinc-900 border-x border-zinc-800/50 flex flex-col relative overflow-x-hidden">
+      <div className="w-full min-h-screen bg-animated-gradient text-white font-sans selection:bg-indigo-500/30">
+        <main className="w-full min-h-screen bg-black/20 backdrop-blur-3xl flex flex-col relative">
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/student-login" element={<StudentLogin />} />
