@@ -1,73 +1,142 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, BookOpen, Trash2, PieChart, List, UserCheck, AlertCircle, BarChart3, MapPin, TrendingUp, Landmark, Download, Database, FileText } from 'lucide-react';
-import { getLogs, clearLogs, getAttendanceStats, getCurrentTeacher, getStudents, getPeriods, PERIOD_TIMINGS } from '../utils/storage';
 import { 
-    ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, 
-    Cell, PieChart as RePieChart, Pie, Legend 
+    ArrowLeft, Download, Database, 
+    LayoutDashboard, Users, BookOpen, BarChart3, Settings, 
+    LogOut, Bell, Calendar, UserCheck, 
+    TrendingUp, AlertCircle, Clock, List, Landmark, MapPin
+} from 'lucide-react';
+import { 
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+    AreaChart, Area, BarChart, Bar, Cell, PieChart as RePieChart, Pie, Legend
 } from 'recharts';
+import { getLogs, clearLogs, getStudents, getCurrentTeacher, logout, getPeriods, PERIOD_TIMINGS } from '../utils/storage';
+
+const getStatusColor = (percentage) => {
+    if (percentage >= 75) return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+    if (percentage >= 50) return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+    return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
+};
+
+const getBarColor = (percentage) => {
+    if (percentage >= 75) return 'bg-emerald-500';
+    if (percentage >= 50) return 'bg-amber-500';
+    return 'bg-rose-500';
+};
+
+const generateHeatmapData = (logs, days) => {
+    const data = [];
+    const today = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toDateString();
+        const count = logs.filter(l => l.fullDate === dateStr).length;
+        data.push({ date: dateStr, count });
+    }
+    return data;
+};
 
 export default function Dashboard() {
     const navigate = useNavigate();
     const teacher = getCurrentTeacher();
-    const [viewMode, setViewMode] = useState('recent'); // 'recent' or 'stats'
-    const [logs, setLogs] = useState(getLogs().filter(l => l.teacher === teacher).reverse());
+    const [viewMode, setViewMode] = useState('recent'); // 'recent', 'stats', 'sessions', 'reports'
     const [timeframe, setTimeframe] = useState('all'); // 'all', 'weekly', 'monthly'
     const [selectedSubject, setSelectedSubject] = useState('all');
     const [selectedStudent, setSelectedStudent] = useState('all');
+    const [searchQuery, setSearchQuery] = useState('');
     
+    const logs = useMemo(() => getLogs().filter(l => l.teacher === teacher).reverse(), [teacher]);
     const studentsList = getStudents();
-    
-    const subjects = Array.from(new Set(logs.map(l => l.period)));
-    
-    // Calculate cutoff date once outside the loop
-    const now = new Date();
-    const days = timeframe === 'weekly' ? 7 : timeframe === 'monthly' ? 30 : 0;
-    const cutoffDate = timeframe !== 'all' ? new Date(now.setDate(now.getDate() - days)) : null;
+    const subjects = useMemo(() => Array.from(new Set(logs.map(l => l.period))), [logs]);
 
-    // Filtered logs based on selected timeframe
-    const timeframeFilteredLogs = timeframe === 'all' 
-        ? logs 
-        : logs.filter(log => {
-            const logDate = new Date(log.timestamp || log.fullDate);
-            return logDate >= cutoffDate;
-        });
-
-    const filteredLogs = timeframeFilteredLogs.filter(l => {
-        const subjectMatch = selectedSubject === 'all' || l.period === selectedSubject;
-        const studentMatch = selectedStudent === 'all' || l.studentId.toString() === selectedStudent.toString();
-        return subjectMatch && studentMatch;
-    });
-
-    const stats = getAttendanceStats(timeframe).filter(s => 
-        selectedStudent === 'all' || s.studentId.toString() === selectedStudent.toString()
-    );
-
-    // Calculate total sessions taken by teacher in this timeframe
-    const totalTeacherSessions = Array.from(new Set(filteredLogs.map(l => `${l.period}-${l.fullDate}`))).length;
-
-    const handleClear = () => {
-        if (confirm('Are you sure you want to delete all attendance records? This cannot be undone.')) {
-            clearLogs();
-            setLogs([]);
-            window.location.reload(); // Refresh stats
+    const filteredLogs = useMemo(() => {
+        let filtered = logs;
+        
+        // Timeframe filter
+        if (timeframe !== 'all') {
+            const now = new Date();
+            const days = timeframe === 'weekly' ? 7 : 30;
+            const cutoff = new Date(now.setDate(now.getDate() - days));
+            filtered = filtered.filter(log => new Date(log.fullDate) >= cutoff);
         }
+
+        // Subject filter
+        if (selectedSubject !== 'all') {
+            filtered = filtered.filter(l => l.period === selectedSubject);
+        }
+
+        // Student filter
+        if (selectedStudent !== 'all') {
+            filtered = filtered.filter(l => l.studentId.toString() === selectedStudent.toString());
+        }
+
+        // Search query
+        if (searchQuery) {
+            filtered = filtered.filter(l => 
+                l.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                l.studentId.toString().includes(searchQuery)
+            );
+        }
+
+        return filtered;
+    }, [logs, timeframe, selectedSubject, selectedStudent, searchQuery]);
+
+    const stats = useMemo(() => {
+        const studentStats = [];
+        const uniqueStudents = Array.from(new Set(logs.map(l => l.studentId)));
+        
+        uniqueStudents.forEach(id => {
+            const studentLogs = logs.filter(l => l.studentId === id);
+            const student = studentsList.find(s => s.id === id) || { name: studentLogs[0]?.studentName || 'Unknown' };
+            
+            // For each subject the student attends
+            const studentSubjects = Array.from(new Set(studentLogs.map(l => l.period)));
+            studentSubjects.forEach(sub => {
+                const subLogs = studentLogs.filter(l => l.period === sub);
+                const totalSessions = Array.from(new Set(logs.filter(l => l.period === sub).map(l => l.fullDate))).length;
+                const attended = subLogs.length;
+                const percentage = totalSessions > 0 ? Math.round((attended / totalSessions) * 100) : 0;
+                
+                studentStats.push({
+                    studentId: id,
+                    studentName: student.name,
+                    subject: sub,
+                    attended,
+                    total: totalSessions,
+                    percentage,
+                    predictedPercentage: Math.min(100, percentage + 5),
+                    riskLevel: percentage >= 75 ? 'Low' : percentage >= 50 ? 'Medium' : 'High'
+                });
+            });
+        });
+        return studentStats;
+    }, [logs, studentsList]);
+
+    const downloadCSV = (content, name) => {
+        const blob = new Blob([content], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.setAttribute('hidden', '');
+        a.setAttribute('href', url);
+        a.setAttribute('download', name);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     };
 
     const handleExport = () => {
-        const logsToExport = filteredLogs;
-        if (logsToExport.length === 0) {
+        if (filteredLogs.length === 0) {
             alert("No records to export!");
             return;
         }
 
         const headers = ["Student ID", "Name", "Subject", "Teacher", "Date", "Time", "Day", "Is Late", "Latitude", "Longitude"];
         
-        // If 'all' subjects are shown, ask if they want separate files
         if (selectedSubject === 'all' && subjects.length > 1) {
-            if (confirm("Export each subject as a SEPARATE file? (Click Cancel to export as a single grouped file)")) {
+            if (confirm("Export each subject as a SEPARATE file?")) {
                 subjects.forEach(subject => {
-                    const subjectLogs = logsToExport.filter(l => l.period === subject);
+                    const subjectLogs = filteredLogs.filter(l => l.period === subject);
                     if (subjectLogs.length === 0) return;
                     
                     const csvRows = subjectLogs.map(log => [
@@ -84,14 +153,13 @@ export default function Dashboard() {
                     ].join(","));
 
                     const csvContent = [headers.join(","), ...csvRows].join("\n");
-                    downloadCSV(csvContent, `Attendance_${subject}_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`);
+                    downloadCSV(csvContent, `Attendance_${subject}_${new Date().toLocaleDateString()}.csv`);
                 });
                 return;
             }
         }
 
-        // Single file export (Grouped by subject)
-        const sortedLogs = [...logsToExport].sort((a, b) => a.period.localeCompare(b.period));
+        const sortedLogs = [...filteredLogs].sort((a, b) => a.period.localeCompare(b.period));
         const csvRows = [headers.join(",")];
         let currentSub = "";
         
@@ -116,97 +184,21 @@ export default function Dashboard() {
         });
 
         const csvContent = csvRows.join("\n");
-        const fileName = selectedSubject === 'all' 
-            ? `Attendance_All_Subjects_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`
-            : `Attendance_${selectedSubject}_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`;
-            
-        downloadCSV(csvContent, fileName);
+        downloadCSV(csvContent, `Attendance_Report_${new Date().toLocaleDateString()}.csv`);
     };
 
-    const handleExportStats = () => {
-        if (stats.length === 0) {
-            alert("No statistics to export!");
-            return;
-        }
-
-        // Sort by subject then by student name
-        const sortedStats = [...stats].sort((a, b) => {
-            const subjectCompare = a.subject.localeCompare(b.subject);
-            if (subjectCompare !== 0) return subjectCompare;
-            return a.studentName.localeCompare(b.studentName);
-        });
-
-        const headers = ["Subject", "Student ID", "Name", "Attended Classes", "Total Sessions", "Attendance Percentage"];
-        const csvRows = [];
-        csvRows.push(headers.join(","));
-
-        let currentSubject = "";
-        sortedStats.forEach(s => {
-            // Add a header and spacing when the subject changes
-            if (s.subject !== currentSubject) {
-                if (currentSubject !== "") {
-                    csvRows.push(""); // Add an empty row between subjects
-                }
-                csvRows.push(`"SECTION: ${s.subject.toUpperCase()} REPORT"`);
-                currentSubject = s.subject;
-            }
-
-            csvRows.push([
-                `"${s.subject}"`,
-                s.studentId,
-                `"${s.studentName}"`,
-                s.attended,
-                s.total,
-                `"${s.percentage}%"`
-            ].join(","));
-        });
-
-        const csvContent = csvRows.join("\n");
-        downloadCSV(csvContent, `Attendance_Subject_Summary_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`);
+    const handleLogout = () => {
+        logout();
+        navigate('/login');
     };
 
-    const downloadCSV = (content, filename) => {
-        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const getStatusColor = (percentage) => {
-        if (percentage >= 75) return 'text-emerald-400 bg-emerald-400/10 border-emerald-500/20';
-        if (percentage >= 50) return 'text-amber-400 bg-amber-400/10 border-amber-500/20';
-        return 'text-rose-400 bg-rose-400/10 border-rose-500/20';
-    };
-
-    const getBarColor = (percentage) => {
-        if (percentage >= 75) return 'bg-emerald-500';
-        if (percentage >= 50) return 'bg-amber-500';
-        return 'bg-rose-500';
-    };
-
-    const generateHeatmapData = (logsData, daysCount = 61) => {
-        const data = [];
-        const now = new Date();
-        for (let i = daysCount - 1; i >= 0; i--) {
-            const d = new Date(now);
-            d.setDate(d.getDate() - i);
-            const toDateStringStr = d.toDateString(); 
-            const count = logsData.filter(l => l.fullDate === toDateStringStr).length;
-            data.push({
-                date: toDateStringStr,
-                count
-            });
-        }
-        return data;
-    };
+    const totalTeacherSessions = useMemo(() => 
+        Array.from(new Set(filteredLogs.map(l => `${l.period}-${l.fullDate}`))).length
+    , [filteredLogs]);
 
     return (
         <div className="flex flex-col h-[100dvh] p-4 animate-in fade-in duration-300 overflow-hidden">
+            {/* Header */}
             <div className="flex items-center justify-between mb-6 px-2 mt-2">
                 <button onClick={() => navigate('/')} className="p-2 glass rounded-full hover:bg-white/10 transition">
                     <ArrowLeft className="w-5 h-5 text-zinc-300" />
@@ -216,178 +208,188 @@ export default function Dashboard() {
                     <button onClick={() => navigate('/database')} className="p-2 bg-indigo-500/10 rounded-full hover:bg-indigo-500/20 transition group border border-indigo-500/20" title="DB Explorer">
                         <Database className="w-5 h-5 text-indigo-500 group-hover:scale-110 transition-transform" />
                     </button>
-                    
-                    {/* Raw Logs Export */}
-                    <button 
-                        onClick={handleExport} 
-                        className="p-2 bg-emerald-500/10 rounded-full hover:bg-emerald-500/20 transition group border border-emerald-500/20"
-                        title="Export Raw Logs"
-                    >
+                    <button onClick={handleExport} className="p-2 bg-emerald-500/10 rounded-full hover:bg-emerald-500/20 transition group border border-emerald-500/20" title="Export Raw Logs">
                         <Download className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" />
                     </button>
-
-                    {/* Summary Export */}
-                    <button 
-                        onClick={handleExportStats} 
-                        className="p-2 bg-amber-500/10 rounded-full hover:bg-amber-500/20 transition group border border-amber-500/20 flex items-center space-x-1 px-3"
-                        title="Export Subject Summary"
-                    >
-                        <FileText className="w-5 h-5 text-amber-500 group-hover:scale-110 transition-transform" />
-                        <span className="text-[8px] font-black text-amber-500 uppercase tracking-tighter">Summary</span>
-                    </button>
-
-                    <button onClick={handleClear} className="p-2 bg-rose-500/10 rounded-full hover:bg-rose-500/20 transition group border border-rose-500/20">
-                        <Trash2 className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
+                    <button onClick={handleLogout} className="p-2 bg-rose-500/10 rounded-full hover:bg-rose-500/20 transition group border border-rose-500/20" title="Sign Out">
+                        <LogOut className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
                     </button>
                 </div>
             </div>
 
-            {/* Global Timeframe Selector */}
+            {/* Timeframe Selector */}
             <div className="flex space-x-2 mb-6 px-1">
-                {['all', 'monthly', 'weekly'].map((tf) => {
-                    let activeColors = 'bg-emerald-500 border-emerald-500 text-black shadow-xl shadow-emerald-500/20';
-                    if (tf === 'monthly') activeColors = 'bg-amber-500 border-amber-500 text-black shadow-xl shadow-amber-500/20';
-                    if (tf === 'weekly') activeColors = 'bg-cyan-500 border-cyan-500 text-black shadow-xl shadow-cyan-500/20';
-                    
-                    return (
-                        <button
-                            key={tf}
-                            onClick={() => setTimeframe(tf)}
-                            className={`flex-1 py-3 px-3 text-[10px] font-black rounded-2xl border transition-all duration-300 ${
-                                timeframe === tf
-                                    ? activeColors
-                                    : 'glass border-white/5 text-zinc-500 hover:text-zinc-300'
-                            }`}
-                        >
-                            {tf === 'all' ? 'OVERALL' : tf === 'monthly' ? 'THIS MONTH' : 'THIS WEEK'}
-                        </button>
-                    );
-                })}
+                {['all', 'monthly', 'weekly'].map((tf) => (
+                    <button
+                        key={tf}
+                        onClick={() => setTimeframe(tf)}
+                        className={`flex-1 py-3 px-3 text-[10px] font-black rounded-2xl border transition-all duration-300 ${
+                            timeframe === tf
+                                ? (tf === 'all' ? 'bg-emerald-500 border-emerald-500 text-black shadow-xl' : 
+                                   tf === 'monthly' ? 'bg-amber-500 border-amber-500 text-black shadow-xl' : 
+                                   'bg-cyan-500 border-cyan-500 text-black shadow-xl')
+                                : 'glass border-white/5 text-zinc-500 hover:text-zinc-300'
+                        }`}
+                    >
+                        {tf === 'all' ? 'OVERALL' : tf === 'monthly' ? 'THIS MONTH' : 'THIS WEEK'}
+                    </button>
+                ))}
             </div>
 
-            {/* Dynamic Timeframe Heading & Subject Filter */}
+            {/* Filters Row */}
             <div className="flex items-center justify-between mb-4 px-2">
                 <div className="flex items-center space-x-3">
-                    <div className={`h-6 w-1 rounded-full ${
-                        timeframe === 'all' ? 'bg-emerald-500' :
-                        timeframe === 'monthly' ? 'bg-amber-500' :
-                        'bg-cyan-500'
-                    }`}></div>
+                    <div className={`h-6 w-1 rounded-full ${timeframe === 'all' ? 'bg-emerald-500' : timeframe === 'monthly' ? 'bg-amber-500' : 'bg-cyan-500'}`}></div>
                     <h3 className="text-sm font-black text-white uppercase tracking-widest">
                         {timeframe === 'all' ? 'Overall Attendance' : timeframe === 'monthly' ? 'Monthly Report' : 'Weekly Summary'}
                     </h3>
                 </div>
                 
-                {subjects.length > 0 && (
-                    <div className="flex space-x-2">
-                        <select 
-                            value={selectedStudent}
-                            onChange={(e) => setSelectedStudent(e.target.value)}
-                            className="bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-tighter px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        >
-                            <option value="all">All Students</option>
-                            {studentsList.map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                        </select>
+                <div className="flex space-x-2">
+                    <select 
+                        value={selectedStudent}
+                        onChange={(e) => setSelectedStudent(e.target.value)}
+                        className="bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-black uppercase px-2 py-1 rounded-lg focus:outline-none"
+                    >
+                        <option value="all">All Students</option>
+                        {studentsList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
 
-                        <select 
-                            value={selectedSubject}
-                            onChange={(e) => setSelectedSubject(e.target.value)}
-                            className="bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-tighter px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        >
-                            <option value="all">All Subjects</option>
-                            {subjects.map(sub => (
-                                <option key={sub} value={sub}>{sub}</option>
-                            ))}
-                        </select>
-                    </div>
-                )}
-            </div>
-
-            {/* Summary Stats for Selected Student */}
-            {selectedStudent !== 'all' && (
-                <div className="grid grid-cols-2 gap-3 mb-6 mx-1">
-                    <div className="glass border-indigo-500/20 rounded-3xl p-5 shadow-2xl">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1.5">Total Days Present</p>
-                        <p className="text-3xl font-black text-white">{filteredLogs.length}</p>
-                    </div>
-                    <div className="glass border-emerald-500/20 rounded-3xl p-5 shadow-2xl">
-                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1.5">Avg. Attendance</p>
-                        <p className="text-3xl font-black text-white">
-                            {stats.length > 0 ? Math.round(stats.reduce((acc, s) => acc + s.percentage, 0) / stats.length) : 0}%
-                        </p>
-                    </div>
+                    <select 
+                        value={selectedSubject}
+                        onChange={(e) => setSelectedSubject(e.target.value)}
+                        className="bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-black uppercase px-2 py-1 rounded-lg focus:outline-none"
+                    >
+                        <option value="all">All Subjects</option>
+                        {subjects.map(sub => <option key={sub} value={sub}>{sub}</option>)}
+                    </select>
                 </div>
-            )}
-
-            {/* Toggle Switch */}
-            <div className="flex glass rounded-2xl p-1 mb-6 mx-1">
-                <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'recent' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    onClick={() => setViewMode('recent')}
-                >
-                    <List className="w-3.5 h-3.5" />
-                    <span>LOGS</span>
-                </button>
-                <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'stats' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    onClick={() => setViewMode('stats')}
-                >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    <span>STATS</span>
-                </button>
-                <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'sessions' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    onClick={() => setViewMode('sessions')}
-                >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>SESSIONS</span>
-                </button>
-                <button 
-                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'reports' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    onClick={() => setViewMode('reports')}
-                >
-                    <BarChart3 className="w-3.5 h-3.5" />
-                    <span>REPORTS</span>
-                </button>
             </div>
 
+            {/* View Mode Toggle */}
+            <div className="flex glass rounded-2xl p-1 mb-6 mx-1">
+                {[
+                    { id: 'recent', label: 'LOGS', icon: <List className="w-3.5 h-3.5" /> },
+                    { id: 'stats', label: 'STATS', icon: <UserCheck className="w-3.5 h-3.5" /> },
+                    { id: 'sessions', label: 'SESSIONS', icon: <BookOpen className="w-3.5 h-3.5" /> },
+                    { id: 'reports', label: 'REPORTS', icon: <BarChart3 className="w-3.5 h-3.5" /> }
+                ].map(view => (
+                    <button 
+                        key={view.id}
+                        className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === view.id ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
+                        onClick={() => setViewMode(view.id)}
+                    >
+                        {view.icon}
+                        <span>{view.label}</span>
+                    </button>
+                ))}
+            </div>
+
+            {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto px-1 pb-10 scrollbar-hide">
-                {viewMode === 'sessions' ? (
+                {viewMode === 'recent' && (
+                    filteredLogs.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
+                            <BookOpen className="w-12 h-12 mb-4" />
+                            <p className="text-lg font-semibold">No records found</p>
+                        </div>
+                    ) : (
+                        filteredLogs.map((log, index) => (
+                            <div key={index} className="glass-dark rounded-2xl p-5 shadow-xl mb-4">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="space-y-0.5">
+                                        <h3 className="text-lg font-bold text-white">{log.studentName}</h3>
+                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">ID: #{log.studentId}</p>
+                                    </div>
+                                    <div className="glass border-indigo-500/20 px-3 py-1 rounded-full">
+                                        <p className="text-[10px] font-black text-indigo-400">{log.period}</p>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap gap-4 border-t border-zinc-800/80 pt-4">
+                                    <div className="flex items-center space-x-2 text-zinc-400">
+                                        <Clock className="w-3.5 h-3.5" />
+                                        <span className="text-xs font-semibold">{log.time}</span>
+                                        {log.isLate && <span className="bg-rose-500/10 text-rose-500 text-[9px] font-black px-2 py-0.5 rounded-full border border-rose-500/20">LATE</span>}
+                                    </div>
+                                    <div className="flex items-center space-x-2 text-zinc-400">
+                                        <Calendar className="w-3.5 h-3.5" />
+                                        <span className="text-xs font-semibold">{log.day}</span>
+                                    </div>
+                                    {log.location && (
+                                        <div className="flex items-center space-x-2 text-emerald-400">
+                                            <MapPin className="w-3.5 h-3.5" />
+                                            <span className="text-xs font-bold">Location Logged</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))
+                    )
+                )}
+
+                {viewMode === 'stats' && (
+                    stats.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
+                            <AlertCircle className="w-12 h-12 mb-4" />
+                            <p className="text-lg font-semibold">No stats available</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {subjects.map(subject => (
+                                <div key={subject} className="space-y-4">
+                                    <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest px-2">{subject} Report</h3>
+                                    {stats.filter(s => s.subject === subject).map((stat, idx) => (
+                                        <div key={idx} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl">
+                                            <div className="flex justify-between items-start mb-5">
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-white">{stat.studentName}</h3>
+                                                    <div className={`mt-1 px-2 py-0.5 rounded-full border text-[8px] font-black inline-flex items-center space-x-1 ${stat.riskLevel === 'High' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : stat.riskLevel === 'Medium' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>
+                                                        <div className={`w-1 h-1 rounded-full ${stat.riskLevel === 'High' ? 'bg-rose-500' : stat.riskLevel === 'Medium' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+                                                        <span>AI RISK: {stat.riskLevel}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className={`px-3 py-1 rounded-full border text-[10px] font-black ${getStatusColor(stat.percentage)}`}>{stat.percentage}%</div>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase">
+                                                    <span>Attendance Progress</span>
+                                                    <span>{stat.attended} / {stat.total} Classes</span>
+                                                </div>
+                                                <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                                                    <div className={`h-full ${getBarColor(stat.percentage)}`} style={{ width: `${stat.percentage}%` }}></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    )
+                )}
+
+                {viewMode === 'sessions' && (
                     (() => {
-                        const allStudentsCount = getStudents().length;
-                        // Group logs by session (subject + date)
-                        const teacherPeriods = getPeriods();
+                        const allStudentsCount = studentsList.length;
                         const sessions = {};
                         filteredLogs.forEach(log => {
                             const key = `${log.period}-${log.fullDate}`;
                             if (!sessions[key]) {
-                                // Find period time
-                                const periodInfo = teacherPeriods.find(p => (typeof p === 'object' ? p.periodName : p) === log.period);
-                                let timeStr = 'N/A';
-                                if (periodInfo && typeof periodInfo === 'object' && periodInfo.startTime) {
-                                    timeStr = `${periodInfo.startTime} - ${periodInfo.endTime}`;
-                                } else if (PERIOD_TIMINGS[log.period]) {
-                                    timeStr = PERIOD_TIMINGS[log.period];
-                                }
-
                                 sessions[key] = {
                                     subject: log.period,
                                     date: log.fullDate,
                                     present: new Set(),
-                                    day: log.day,
-                                    timeRange: timeStr
+                                    day: log.day
                                 };
                             }
                             sessions[key].present.add(log.studentId);
                         });
-
                         const sessionList = Object.values(sessions).sort((a, b) => new Date(b.date) - new Date(a.date));
 
                         return sessionList.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
-                                <Landmark className="w-12 h-12 mb-4 text-zinc-600" />
+                                <Landmark className="w-12 h-12 mb-4" />
                                 <p className="text-lg font-semibold">No sessions recorded</p>
                             </div>
                         ) : (
@@ -396,34 +398,17 @@ export default function Dashboard() {
                                     const presentCount = session.present.size;
                                     const absentCount = Math.max(0, allStudentsCount - presentCount);
                                     return (
-                                        <div className="glass-dark rounded-3xl p-5 shadow-2xl mb-4">
-                                            <div className="flex items-center justify-between p-3 rounded-2xl glass border-white/5 mb-4">
+                                        <div key={idx} className="glass-dark rounded-3xl p-5 shadow-2xl">
+                                            <div className="flex justify-between items-center mb-4">
                                                 <div>
                                                     <h3 className="text-base font-bold text-white">{session.subject}</h3>
-                                                    <div className="flex items-center space-x-2 mt-0.5">
-                                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{session.day}, {session.date}</p>
-                                                        <span className="text-zinc-700">•</span>
-                                                        <div className="flex items-center space-x-1">
-                                                            <Clock className="w-3 h-3 text-indigo-400" />
-                                                            <p className="text-[10px] text-indigo-400 font-black tracking-widest">{session.timeRange}</p>
-                                                        </div>
-                                                    </div>
+                                                    <p className="text-[10px] text-zinc-500 font-bold uppercase">{session.day}, {session.date}</p>
                                                 </div>
-                                                <div className="bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
-                                                    <span className="text-[10px] font-black text-indigo-400">SESSION #{sessionList.length - idx}</span>
+                                                <div className="bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20 text-[10px] font-black text-indigo-400">
+                                                    {presentCount} / {allStudentsCount}
                                                 </div>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-3 flex flex-col items-center">
-                                                    <p className="text-[9px] font-black text-emerald-500/60 uppercase mb-1">Present</p>
-                                                    <p className="text-xl font-black text-emerald-400">{presentCount}</p>
-                                                </div>
-                                                <div className="bg-rose-500/5 border border-rose-500/10 rounded-2xl p-3 flex flex-col items-center">
-                                                    <p className="text-[9px] font-black text-rose-500/60 uppercase mb-1">Absent</p>
-                                                    <p className="text-xl font-black text-rose-400">{absentCount}</p>
-                                                </div>
-                                            </div>
-                                            <div className="mt-4 w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden flex">
+                                            <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden flex">
                                                 <div className="h-full bg-emerald-500" style={{ width: `${(presentCount / allStudentsCount) * 100}%` }}></div>
                                                 <div className="h-full bg-rose-500" style={{ width: `${(absentCount / allStudentsCount) * 100}%` }}></div>
                                             </div>
@@ -433,338 +418,44 @@ export default function Dashboard() {
                             </div>
                         );
                     })()
-                ) : viewMode === 'recent' ? (
-                    filteredLogs.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center opacity-40 px-10 text-center">
-                            <BookOpen className="w-12 h-12 mb-4 text-zinc-600" />
-                            <p className="text-lg font-semibold">No records found for<br/>{teacher || 'Unknown Teacher'}</p>
-                            <p className="text-xs text-zinc-500 mt-1">{timeframe === 'all' ? 'Start marking attendance to see logs here.' : `No activity in the last ${timeframe === 'weekly' ? '7' : '30'} days.`}</p>
-                        </div>
-                    ) : (
-                        filteredLogs.map((log, index) => (
-                            <div key={index} className="glass-dark rounded-2xl p-5 shadow-xl mb-4 animate-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${index * 50}ms` }}>
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="space-y-0.5">
-                                        <h3 className="text-lg font-bold text-white leading-tight">
-                                            {log.studentName}
-                                        </h3>
-                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">ID: #{log.studentId}</p>
-                                    </div>
-                                    <div className="glass border-indigo-500/20 px-3 py-1 rounded-full">
-                                        <p className="text-[10px] font-black text-indigo-400 tracking-wider">
-                                            {log.period}
-                                        </p>
-                                    </div>
-                                </div>
+                )}
 
-                                <div className="flex flex-wrap gap-4 border-t border-zinc-800/80 pt-4">
-                                    <div className="flex items-center space-x-2 text-zinc-400">
-                                        <div className="p-1.5 bg-zinc-800 rounded-lg">
-                                            <Clock className="w-3.5 h-3.5 text-zinc-500" />
-                                        </div>
-                                        <span className="text-xs font-semibold">{log.time}</span>
-                                        {log.isLate && (
-                                            <span className="ml-1 bg-rose-500/10 text-rose-500 text-[9px] font-black px-2 py-0.5 rounded-full border border-rose-500/20">LATE</span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center space-x-2 text-zinc-400">
-                                        <div className="p-1.5 bg-zinc-800 rounded-lg">
-                                            <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                                        </div>
-                                        <span className="text-xs font-semibold">{log.day}</span>
-                                    </div>
-                                    {log.location && (
-                                        <a 
-                                            href={`https://www.google.com/maps?q=${log.location.lat},${log.location.lng}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center space-x-2 text-emerald-400 hover:text-emerald-300 transition"
-                                        >
-                                            <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                                                <MapPin className="w-3.5 h-3.5" />
-                                            </div>
-                                            <span className="text-xs font-bold">Map</span>
-                                        </a>
-                                    )}
-                                </div>
-                            </div>
-                        ))
-                    )
-                ) : viewMode === 'stats' ? (
-                    stats.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
-                            <AlertCircle className="w-12 h-12 mb-4 text-zinc-600" />
-                            <p className="text-lg font-semibold">No stats available</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-6 pb-6">
-                            {/* Summary Card for Teacher */}
-                            <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-6 shadow-xl shadow-indigo-500/20 mb-2 relative overflow-hidden">
-                                <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
-                                <div className="relative z-10">
-                                    <p className="text-[10px] font-black text-indigo-100 uppercase tracking-[0.2em] mb-1 opacity-80">Teacher Workload</p>
-                                    <div className="flex items-end space-x-2">
-                                        <h4 className="text-4xl font-black text-white">{totalTeacherSessions}</h4>
-                                        <p className="text-xs font-bold text-indigo-100 mb-1.5 opacity-90">Classes Taken</p>
-                                    </div>
-                                    <div className="mt-4 flex items-center space-x-2 bg-black/20 backdrop-blur-sm rounded-xl p-2.5 border border-white/10">
-                                        <TrendingUp className="w-4 h-4 text-emerald-400" />
-                                        <p className="text-[10px] font-bold text-indigo-50 text-white/90">
-                                            {timeframe === 'all' ? 'Total sessions across all recorded subjects' : 
-                                             timeframe === 'monthly' ? 'Total sessions taken in the last 30 days' : 
-                                             'Total sessions taken in the last 7 days'}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center space-x-3 mb-2 px-2 mt-8">
-                                <div className="h-4 w-1 rounded-full bg-indigo-500"></div>
-                                <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sessions by Subject</h3>
-                            </div>
-
-                            {/* Summary Header: Total Classes Taken per Subject */}
-                            <div className="grid grid-cols-2 gap-3 mb-2">
-                                {Array.from(new Set(stats.map(s => s.subject))).map(subject => {
-                                    const subjectStats = stats.filter(s => s.subject === subject);
-                                    const totalClasses = subjectStats.length > 0 ? subjectStats[0].total : 0;
-                                    return (
-                                        <div key={subject} className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex flex-col items-center justify-center space-y-1 shadow-lg">
-                                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{subject}</p>
-                                            <p className="text-2xl font-black text-emerald-400">{totalClasses}</p>
-                                            <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-tighter text-center">Total Sessions</p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            <div className="h-px bg-zinc-900 mx-2"></div>
-
-                            {/* Individual Student Stats Grouped by Subject */}
-                            <div className="space-y-10">
-                                {Array.from(new Set(stats.map(s => s.subject))).map(subject => (
-                                    <div key={subject} className="space-y-4">
-                                        <div className="flex items-center space-x-3 mb-4 px-2">
-                                            <div className="h-3 w-3 rounded-full bg-orange-500 shadow-lg shadow-orange-500/20"></div>
-                                            <h3 className="text-xs font-black text-zinc-400 uppercase tracking-[0.2em]">{subject} Report</h3>
-                                        </div>
-                                        
-                                        <div className="space-y-4">
-                                            {stats.filter(s => s.subject === subject).map((stat, index) => (
-                                                <div key={index} className="bg-zinc-900 border border-zinc-800/80 rounded-3xl p-5 shadow-xl animate-in fade-in slide-in-from-right-4 duration-500" style={{ animationDelay: `${index * 30}ms` }}>
-                                                    <div className="flex justify-between items-start mb-5">
-                                                        <div className="space-y-0.5">
-                                                            <div className="flex items-center space-x-2">
-                                                                <h3 className="text-lg font-bold text-white leading-tight">{stat.studentName}</h3>
-                                                                {/* AI Risk Badge */}
-                                                                <div className={`px-2 py-0.5 rounded-full border text-[8px] font-black tracking-widest uppercase flex items-center space-x-1 ${
-                                                                    stat.riskLevel === 'High' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : 
-                                                                    stat.riskLevel === 'Medium' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 
-                                                                    'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                                                                }`}>
-                                                                    <div className={`w-1 h-1 rounded-full ${stat.riskLevel === 'High' ? 'bg-rose-500 animate-pulse' : stat.riskLevel === 'Medium' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
-                                                                    <span>AI RISK: {stat.riskLevel}</span>
-                                                                </div>
-                                                            </div>
-                                                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Enrollment ID: #{stat.studentId}</p>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className={`px-3 py-1 rounded-full border text-[10px] font-black tracking-widest ${getStatusColor(stat.percentage)}`}>
-                                                                {stat.percentage}%
-                                                            </div>
-                                                            <p className="text-[8px] font-black text-zinc-600 mt-1 uppercase tracking-tighter">Current</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-4 mb-5">
-                                                        <div className="bg-zinc-950/50 rounded-2xl p-3 border border-zinc-800/50">
-                                                            <p className="text-[9px] font-black text-zinc-500 uppercase mb-1">Current Trend</p>
-                                                            <div className="flex items-end space-x-1">
-                                                                <span className="text-lg font-black text-white">{stat.attended}</span>
-                                                                <span className="text-[10px] font-bold text-zinc-600 mb-0.5">/ {stat.total} Classes</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="bg-indigo-500/5 rounded-2xl p-3 border border-indigo-500/10 relative overflow-hidden">
-                                                            <div className="absolute top-0 right-0 p-1 opacity-20">
-                                                                <TrendingUp className="w-8 h-8 text-indigo-400" />
-                                                            </div>
-                                                            <p className="text-[9px] font-black text-indigo-400/60 uppercase mb-1">AI Predicted</p>
-                                                            <div className="flex items-end space-x-1">
-                                                                <span className="text-lg font-black text-indigo-400">{stat.predictedPercentage}%</span>
-                                                                <span className="text-[8px] font-bold text-indigo-400/40 mb-1 uppercase">End-Term</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-3">
-                                                        <div className="flex justify-between items-end text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                                                            <span>Attendance Progress</span>
-                                                            <span className="text-zinc-300">{stat.percentage}% COMPLETE</span>
-                                                        </div>
-                                                        <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden p-0.5 border border-zinc-700/30">
-                                                            <div 
-                                                                className={`h-full transition-all duration-1000 ease-out rounded-full ${getBarColor(stat.percentage)}`}
-                                                                style={{ width: `${stat.percentage}%` }}
-                                                            ></div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                {viewMode === 'reports' && (
+                    <div className="space-y-6">
+                        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
+                            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-emerald-400" /> Activity Heatmap
+                            </h3>
+                            <div className="flex flex-wrap gap-1.5">
+                                {generateHeatmapData(logs, 60).map((day, idx) => (
+                                    <div 
+                                        key={idx} 
+                                        className={`w-3 h-3 rounded-sm ${day.count > 6 ? 'bg-emerald-500' : day.count > 2 ? 'bg-emerald-500/60' : day.count > 0 ? 'bg-emerald-500/30' : 'bg-zinc-800'}`}
+                                        title={`${day.date}: ${day.count} logs`}
+                                    />
                                 ))}
                             </div>
                         </div>
-                    )
-                ) : (
-                    /* Graphical Reports View */
-                    <div className="space-y-6 pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {stats.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center opacity-40 py-20">
-                                <AlertCircle className="w-12 h-12 mb-4 text-zinc-600" />
-                                <p className="text-lg font-semibold">No data for reports</p>
+
+                        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
+                            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2">
+                                <TrendingUp className="w-4 h-4 text-indigo-400" /> Attendance per Student
+                            </h3>
+                            <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={stats}>
+                                        <XAxis dataKey="studentName" hide />
+                                        <YAxis hide domain={[0, 100]} />
+                                        <Tooltip contentStyle={{ backgroundColor: '#18181b', border: 'none', borderRadius: '12px' }} />
+                                        <Bar dataKey="percentage" radius={[4, 4, 0, 0]}>
+                                            {stats.map((entry, index) => (
+                                                <Cell key={index} fill={entry.percentage >= 75 ? '#10b981' : entry.percentage >= 50 ? '#f59e0b' : '#f43f5e'} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
                             </div>
-                        ) : (
-                            <>
-                                {/* Activity Heatmap */}
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-500 delay-100">
-                                    <div className="flex items-center space-x-3 mb-6">
-                                        <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                                            <Calendar className="w-5 h-5 text-emerald-400" />
-                                        </div>
-                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Activity Heatmap</h3>
-                                    </div>
-                                    
-                                    <div className="flex flex-wrap gap-1.5 justify-start">
-                                        {generateHeatmapData(logs, 61).map((day, idx) => {
-                                            let colorClass = 'bg-zinc-800';
-                                            if (day.count > 0 && day.count <= 2) colorClass = 'bg-emerald-500/30';
-                                            else if (day.count > 2 && day.count <= 6) colorClass = 'bg-emerald-500/60';
-                                            else if (day.count > 6) colorClass = 'bg-emerald-500';
-                                            
-                                            return (
-                                                <div 
-                                                    key={idx} 
-                                                    className={`w-3 h-3 rounded-sm ${colorClass} group relative cursor-pointer hover:ring-1 hover:ring-zinc-400 transition-all`}
-                                                >
-                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-[60]">
-                                                        <div className="bg-zinc-800 border border-zinc-700 text-white text-[9px] font-bold px-2 py-1 rounded shadow-xl whitespace-nowrap">
-                                                            {day.date} • <span className="text-emerald-400">{day.count} Logs</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    
-                                    <div className="flex justify-between mt-5 px-1 items-center">
-                                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Last 60 Days</span>
-                                        <div className="flex items-center space-x-1">
-                                            <span className="text-[9px] font-bold text-zinc-500 mr-1">LESS</span>
-                                            <div className="w-2.5 h-2.5 rounded-sm bg-zinc-800"></div>
-                                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/30"></div>
-                                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/60"></div>
-                                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div>
-                                            <span className="text-[9px] font-bold text-zinc-500 ml-1">MORE</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Bar Chart: Attendance % per Student */}
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
-                                    <div className="flex items-center space-x-3 mb-6">
-                                        <div className="p-2 bg-indigo-500/10 rounded-xl">
-                                            <TrendingUp className="w-5 h-5 text-indigo-400" />
-                                        </div>
-                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Attendance % per Student</h3>
-                                    </div>
-                                    <div className="h-64 w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={stats}>
-                                                <XAxis dataKey="studentName" hide />
-                                                <YAxis domain={[0, 100]} hide />
-                                                <Tooltip 
-                                                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
-                                                    itemStyle={{ color: '#818cf8', fontWeight: 'bold' }}
-                                                />
-                                                <Bar dataKey="percentage" radius={[4, 4, 0, 0]}>
-                                                    {stats.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={entry.percentage >= 75 ? '#10b981' : entry.percentage >= 50 ? '#f59e0b' : '#f43f5e'} />
-                                                    ))}
-                                                </Bar>
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    <div className="flex justify-between mt-4 px-2">
-                                        <div className="flex items-center space-x-2">
-                                            <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                                            <span className="text-[9px] font-bold text-zinc-500 tracking-tighter">GOOD (75%+)</span>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-                                            <span className="text-[9px] font-bold text-zinc-500 tracking-tighter">AVERAGE</span>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
-                                            <span className="text-[9px] font-bold text-zinc-500 tracking-tighter">LOW</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Pie Chart: Late vs On-time Ratio */}
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
-                                    <div className="flex items-center space-x-3 mb-6">
-                                        <div className="p-2 bg-emerald-500/10 rounded-xl">
-                                            <PieChart className="w-5 h-5 text-emerald-400" />
-                                        </div>
-                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Entry Performance</h3>
-                                    </div>
-                                    <div className="h-64 w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <RePieChart>
-                                                <Pie
-                                                    data={[
-                                                        { name: 'On-time', value: filteredLogs.filter(l => !l.isLate).length },
-                                                        { name: 'Late', value: filteredLogs.filter(l => l.isLate).length }
-                                                    ]}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    innerRadius={60}
-                                                    outerRadius={80}
-                                                    paddingAngle={5}
-                                                    dataKey="value"
-                                                >
-                                                    <Cell fill="#10b981" />
-                                                    <Cell fill="#f43f5e" />
-                                                </Pie>
-                                                <Tooltip 
-                                                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
-                                                />
-                                                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingTop: '20px' }} />
-                                            </RePieChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-
-                                {/* Class Distribution */}
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-2xl">
-                                    <div className="flex items-center space-x-3 mb-6">
-                                        <div className="p-2 bg-amber-500/10 rounded-xl">
-                                            <Landmark className="w-5 h-5 text-amber-400" />
-                                        </div>
-                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Subject Logs Summary</h3>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {Array.from(new Set(filteredLogs.map(l => l.period))).map(period => (
-                                            <div key={period} className="flex items-center justify-between bg-zinc-950/50 p-3 rounded-2xl border border-zinc-800">
-                                                <span className="text-xs font-bold text-zinc-300">{period}</span>
-                                                <span className="text-xs font-black text-indigo-400">{filteredLogs.filter(l => l.period === period).length} Logs</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </>
-                        )}
+                        </div>
                     </div>
                 )}
             </div>

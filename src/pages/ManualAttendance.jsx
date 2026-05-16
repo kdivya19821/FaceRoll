@@ -12,6 +12,7 @@ export default function ManualAttendance() {
     const [attendanceState, setAttendanceState] = useState({}); // { studentId: 'present' | 'absent' | 'late' }
     const [loading, setLoading] = useState(false);
     const [markedIds, setMarkedIds] = useState(new Set());
+    const [periodStatus, setPeriodStatus] = useState(null);
 
     // Default to present as it's faster for bulk entry, teachers usually only mark absentees
     useEffect(() => {
@@ -36,7 +37,7 @@ export default function ManualAttendance() {
         if (!statusInfo.isAllowed) {
             const msg = statusInfo.status === 'Early' 
                 ? "Class hasn't started yet!" 
-                : "Class has already ended (or the 10-minute late limit passed). You cannot mark attendance now.";
+                : "Class session has ended. Manual marking is closed.";
             alert(msg);
             return;
         }
@@ -99,6 +100,9 @@ export default function ManualAttendance() {
                             const period = e.target.value;
                             setSelectedPeriod(period);
                             if (period) {
+                                const statusInfo = checkLateStatus(period);
+                                setPeriodStatus(statusInfo);
+
                                 const logs = getLogs();
                                 const today = new Date().toDateString();
                                 const marked = new Set(
@@ -108,6 +112,7 @@ export default function ManualAttendance() {
                                 setMarkedIds(marked);
                             } else {
                                 setMarkedIds(new Set());
+                                setPeriodStatus(null);
                             }
                         }}
                     >
@@ -117,17 +122,20 @@ export default function ManualAttendance() {
                             return <option key={name} value={name}>{name}</option>;
                         })}
                     </select>
-                    {selectedPeriod && (() => {
-                        const s = checkLateStatus(selectedPeriod);
-                        return (
-                            <div className={`mt-3 px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest flex items-center space-x-2 ${
-                                s.isAllowed ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                            }`}>
-                                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${s.isAllowed ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-                                <span>Status: {s.status === 'Early' ? 'NOT STARTED' : s.isAllowed ? 'OPEN FOR ATTENDANCE' : 'CLASS ENDED'}</span>
-                            </div>
-                        );
-                    })()}
+                    {periodStatus && (
+                        <div className={`mt-3 px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest flex items-center space-x-2 ${
+                            periodStatus.isAllowed ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                        }`}>
+                            <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${periodStatus.isAllowed ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                            <span>Status: {periodStatus.status === 'Early' ? 'NOT STARTED' : periodStatus.isAllowed ? 'OPEN FOR ATTENDANCE' : 'CLASS ENDED'}</span>
+                        </div>
+                    )}
+                    {periodStatus && periodStatus.isAllowed && periodStatus.isLate && (
+                        <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center space-x-2 animate-in slide-in-from-top-2">
+                            <Clock className="w-4 h-4 text-amber-400" />
+                            <p className="text-xs font-bold text-amber-400">NOTE: Current time is considered LATE for this period.</p>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -183,8 +191,8 @@ export default function ManualAttendance() {
             <div className="absolute bottom-4 left-4 right-4 z-10">
                 <button 
                     onClick={handleSaveLog}
-                    disabled={loading || students.length === 0}
-                    className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-black py-4 flex items-center justify-center space-x-2 rounded-2xl shadow-xl shadow-orange-500/20 transition-all uppercase tracking-widest text-sm disabled:opacity-50"
+                    disabled={loading || students.length === 0 || (periodStatus && !periodStatus.isAllowed)}
+                    className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-black py-4 flex items-center justify-center space-x-2 rounded-2xl shadow-xl shadow-orange-500/20 transition-all uppercase tracking-widest text-sm disabled:opacity-50 disabled:grayscale"
                 >
                     {loading ? (
                          <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>

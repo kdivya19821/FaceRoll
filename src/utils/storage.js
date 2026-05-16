@@ -145,6 +145,25 @@ export function removeTeacher(teacherId) {
     fetch(`/api/teachers/${teacherId}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
 
+export const TEACHER_PASSWORDS = {
+    'Ms.Soumya': 'soumya@faceroll',
+    'Ms.Sujatha': 'sujatha@faceroll',
+    'Ms.Selva Priya': 'selva@faceroll'
+};
+
+export const STUDENT_PASSWORDS = {
+    '1': 'affrin@faceroll',
+    '2': 'safiya@faceroll',
+    '3': 'sibitha@faceroll',
+    '4': 'akshita@faceroll',
+    '5': 'kusuma@faceroll',
+    '6': 'sheetal@faceroll',
+    '7': 'divya@faceroll',
+    '8': 'saara@faceroll',
+    '9': 'gowri@faceroll',
+    '10': 'ifthaz@faceroll'
+};
+
 export const PERIOD_TIMINGS = {
     'Period 1': '09:00-09:45',
     'Period 2': '09:45-10:30',
@@ -159,12 +178,12 @@ export const PERIOD_TIMINGS = {
 export function checkLateStatus(periodName) {
     const periods = getPeriods();
     const period = periods.find(p => (typeof p === 'object' ? p.periodName : p) === periodName);
-    
+
     if (!period || typeof period !== 'object' || !period.startTime || !period.endTime) {
         // Fallback to old hardcoded timings if still in migration
         const fallbackTiming = PERIOD_TIMINGS[periodName];
         if (!fallbackTiming) return { isLate: false, isAllowed: true, status: 'On-time' };
-        
+
         const [startStr, endStr] = fallbackTiming.split('-');
         return _calculateLateStatus(startStr, endStr);
     }
@@ -249,7 +268,7 @@ export function savePeriod(newPeriod, startTime, endTime) {
     const key = PERIODS_KEY + '_' + teacher;
     const periods = getPeriods();
     const exists = periods.some(p => (typeof p === 'string' ? p : p.periodName) === newPeriod.trim());
-    
+
     if (newPeriod.trim().length > 0 && !exists) {
         const periodObj = { periodName: newPeriod.trim(), startTime, endTime };
         periods.push(periodObj);
@@ -282,9 +301,9 @@ export function getLogs() {
 
 export function isAttendanceMarked(studentId, period, date) {
     const logs = getLogs();
-    return logs.some(l => 
-        l.studentId.toString() === studentId.toString() && 
-        l.period === period && 
+    return logs.some(l =>
+        l.studentId.toString() === studentId.toString() &&
+        l.period === period &&
         l.fullDate === (date || new Date().toDateString())
     );
 }
@@ -343,7 +362,7 @@ export async function saveBatchLogs(logsDataArray) {
     if (savedLogs.length > 0) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
     }
-    
+
     return { success: true, count: savedLogs.length };
 }
 
@@ -428,11 +447,11 @@ export function getAttendanceStats(timeframe = 'all') {
 
     return Object.values(stats).map(s => {
         const percentage = s.total > 0 ? Math.round((s.attended.size / s.total) * 100) : 0;
-        
+
         // AI Predictive Logic:
         // Assume a standard semester has 40 sessions.
         // Current trend projection:
-        const totalExpectedSessions = 40; 
+        const totalExpectedSessions = 40;
         const remainingSessions = Math.max(0, totalExpectedSessions - s.total);
         const currentRate = s.total > 0 ? (s.attended.size / s.total) : 0;
         const predictedAttended = s.attended.size + (remainingSessions * currentRate);
