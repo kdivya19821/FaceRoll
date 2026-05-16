@@ -6,7 +6,7 @@ from pydantic import BaseModel
 import json
 import datetime
 
-from database import SessionLocal, engine, Student, Log, FaceDescriptor, TeacherFaceDescriptor, Period, Leave
+from database import SessionLocal, engine, Student, Log, FaceDescriptor, TeacherFaceDescriptor, Period, Leave, Teacher
 
 app = FastAPI()
 
@@ -28,8 +28,13 @@ def get_db():
 
 # --- Pydantic Models ---
 class StudentCreate(BaseModel):
-    id: int
+    id: str
     name: str
+
+class TeacherCreate(BaseModel):
+    name: str
+    password: str
+    subjects: List[str] = []
 
 class LogCreate(BaseModel):
     studentId: str
@@ -63,6 +68,7 @@ class LeaveStatusUpdate(BaseModel):
 # 1. Students
 @app.get("/api/students")
 def get_students(db: Session = Depends(get_db)):
+    
     students = db.query(Student).all()
     if not students:
         # Default students
@@ -91,14 +97,74 @@ def save_student(student: StudentCreate, db: Session = Depends(get_db)):
     return {"message": "Success"}
 
 @app.delete("/api/students/{student_id}")
-def remove_student(student_id: int, db: Session = Depends(get_db)):
+def remove_student(student_id: str, db: Session = Depends(get_db)):
     db_student = db.query(Student).filter(Student.id == student_id).first()
     if db_student:
         db.delete(db_student)
         db.commit()
     return {"message": "Success"}
 
-# 2. Periods
+# 2. Teachers
+@app.get("/api/teachers")
+def get_teachers(db: Session = Depends(get_db)):
+    teachers = db.query(Teacher).all()
+    if not teachers:
+        # Default teachers
+        default_teachers = [
+            {'name': 'Ms.Soumya', 'password': 'soumya@faceroll'},
+            {'name': 'Ms.Sujatha', 'password': 'sujatha@faceroll'},
+            {'name': 'Ms.Selva Priya', 'password': 'selvapriya@faceroll'}
+        ]
+        for dt in default_teachers:
+            db.add(Teacher(name=dt["name"], password=dt["password"]))
+        db.commit()
+        teachers = db.query(Teacher).all()
+    
+    result = []
+    for t in teachers:
+        # Get subjects for this teacher from periods table
+        periods = db.query(Period).filter(Period.teacherName == t.name).all()
+        subjects = [p.periodName for p in periods]
+        result.append({
+            "id": t.id,
+            "name": t.name,
+            "password": t.password,
+            "subjects": subjects
+        })
+    return result
+
+@app.post("/api/teachers")
+def save_teacher(teacher: TeacherCreate, db: Session = Depends(get_db)):
+    db_teacher = db.query(Teacher).filter(Teacher.name == teacher.name).first()
+    if db_teacher:
+        db_teacher.password = teacher.password
+    else:
+        db_teacher = Teacher(name=teacher.name, password=teacher.password)
+        db.add(db_teacher)
+    
+    # Also handle subjects (periods)
+    if teacher.subjects:
+        # Remove existing periods that are not in the new list? 
+        # Or just add new ones? Let's follow the storage logic.
+        for sub in teacher.subjects:
+            existing_p = db.query(Period).filter(Period.teacherName == teacher.name, Period.periodName == sub).first()
+            if not existing_p:
+                db.add(Period(teacherName=teacher.name, periodName=sub))
+    
+    db.commit()
+    return {"message": "Success"}
+
+@app.delete("/api/teachers/{teacher_id}")
+def remove_teacher(teacher_id: int, db: Session = Depends(get_db)):
+    db_teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
+    if db_teacher:
+        # Also remove their periods?
+        db.query(Period).filter(Period.teacherName == db_teacher.name).delete()
+        db.delete(db_teacher)
+        db.commit()
+    return {"message": "Success"}
+
+# 3. Periods
 @app.get("/api/periods/{teacher}")
 def get_periods(teacher: str, db: Session = Depends(get_db)):
     periods = db.query(Period).filter(Period.teacherName == teacher).all()

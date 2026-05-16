@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import * as faceapi from '@vladmandic/face-api';
-import { ScanFace, LogIn, BookOpen } from 'lucide-react';
-import { login, getCurrentTeacher, TEACHER_SUBJECTS, getTeacherFaceDescriptors } from '../utils/storage';
+import { ScanFace, LogIn, BookOpen, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { login, getCurrentTeacher, getTeacherSubjects, getTeacherFaceDescriptors, getTeacherPasswords } from '../utils/storage';
 import CameraView from '../components/CameraView';
 import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
 
-const TEACHERS = Object.keys(TEACHER_SUBJECTS);
+// Dynamic list
 
 export default function Login() {
     const navigate = useNavigate();
     const [selectedTeacher, setSelectedTeacher] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [error, setError] = useState('');
     const [loadingModels, setLoadingModels] = useState(true);
     const [scanStatus, setScanStatus] = useState('Initializing Scanner...');
 
@@ -28,9 +31,11 @@ export default function Login() {
         async function init() {
             await loadModels();
             const teacherFaces = getTeacherFaceDescriptors();
+            const teacherNames = Object.keys(getTeacherSubjects());
             const labeledDescriptors = [];
             
             for (const [teacherName, descriptorObj] of Object.entries(teacherFaces)) {
+                if (!teacherNames.includes(teacherName)) continue; // Only registered teachers
                 const float32Array = toFloat32Array(descriptorObj);
                 if (float32Array) {
                     labeledDescriptors.push(
@@ -75,7 +80,7 @@ export default function Login() {
             faceapi.draw.drawDetections(canvas, resizedDetections);
             drawLabel.draw(canvas);
 
-            if (bestMatch.label !== 'unknown' && TEACHERS.includes(bestMatch.label)) {
+            if (bestMatch.label !== 'unknown' && Object.keys(getTeacherSubjects()).includes(bestMatch.label)) {
                 autoLoginTriggered.current = true;
                 setScanStatus(`Welcome, ${bestMatch.label}! (${Math.round((1 - bestMatch.distance) * 100)}% match)`);
                 setSelectedTeacher(bestMatch.label);
@@ -94,12 +99,23 @@ export default function Login() {
 
     const handleManualLogin = (e) => {
         e.preventDefault();
+        setError('');
         if (!selectedTeacher) return;
+        
+        // Check password
+        const passwords = getTeacherPasswords();
+        if (passwords[selectedTeacher] !== password) {
+            setError('Incorrect password');
+            return;
+        }
+
         login(selectedTeacher);
         navigate('/', { replace: true });
     };
 
-    const assignedSubjects = selectedTeacher ? TEACHER_SUBJECTS[selectedTeacher] : [];
+    const subjects = getTeacherSubjects();
+    const assignedSubjects = selectedTeacher ? (subjects[selectedTeacher] || []) : [];
+    const teacherNames = Object.keys(subjects);
 
     return (
         <div className="flex flex-col flex-1 items-center justify-center p-4 space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto">
@@ -113,7 +129,7 @@ export default function Login() {
                 </div>
             </div>
 
-            <div className="w-full relative bg-zinc-900 rounded-[2rem] p-2 border border-zinc-800/60 overflow-hidden shadow-2xl h-[35vh]">
+            <div className="w-full relative glass-dark rounded-[2rem] p-2 overflow-hidden shadow-2xl h-[35vh]">
                 {loadingModels ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 z-10 bg-zinc-900">
                         <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
@@ -122,7 +138,7 @@ export default function Login() {
                 ) : (
                     <CameraView ref={cameraRef} onDraw={handleDraw} />
                 )}
-                <div className="absolute bottom-3 left-3 right-3 bg-zinc-900/90 backdrop-blur-md px-4 py-2 rounded-xl text-center shadow-lg border border-zinc-700">
+                <div className="absolute bottom-3 left-3 right-3 glass px-4 py-2 rounded-xl text-center shadow-lg">
                     <p className={`font-semibold text-xs sm:text-sm ${autoLoginTriggered.current ? 'text-emerald-400 animate-pulse' : 'text-indigo-300'}`}>
                         {scanStatus}
                     </p>
@@ -130,21 +146,54 @@ export default function Login() {
             </div>
 
             <form onSubmit={handleManualLogin} className="w-full space-y-4 pb-6">
-                <div className="bg-zinc-900 rounded-[2rem] p-5 shadow-xl border border-zinc-800 space-y-4">
+                <div className="glass-dark rounded-[2rem] p-5 shadow-xl space-y-4">
                     <div>
-                        <label className="block text-sm font-semibold text-zinc-400 mb-2 ml-1">Or Select Name Manually</label>
+                        <label className="block text-sm font-semibold text-zinc-400 mb-2 ml-1">Select Name</label>
                         <select
                             value={selectedTeacher}
-                            onChange={(e) => setSelectedTeacher(e.target.value)}
+                            onChange={(e) => {
+                                setSelectedTeacher(e.target.value);
+                                setError('');
+                            }}
                             disabled={autoLoginTriggered.current}
                             className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-2xl py-3.5 px-4 font-semibold outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all appearance-none"
                         >
                             <option value="">-- Manual Fallback --</option>
-                            {TEACHERS.map(t => (
+                            {teacherNames.map(t => (
                                 <option key={t} value={t}>{t}</option>
                             ))}
                         </select>
                     </div>
+
+                    {selectedTeacher && (
+                        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                            <label className="block text-sm font-semibold text-zinc-400 mb-2 ml-1">Password</label>
+                            <div className="relative group">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <KeyRound className="w-5 h-5 text-zinc-500 group-focus-within:text-indigo-400 transition-colors" />
+                                </div>
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => {
+                                        setPassword(e.target.value);
+                                        setError('');
+                                    }}
+                                    disabled={autoLoginTriggered.current}
+                                    placeholder="Enter your password"
+                                    className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-2xl py-3.5 pl-11 pr-12 font-semibold outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-zinc-500 hover:text-white transition-colors"
+                                >
+                                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                            </div>
+                            {error && <p className="text-rose-500 text-sm mt-2 ml-1 font-medium">{error}</p>}
+                        </div>
+                    )}
 
                     {assignedSubjects.length > 0 && (
                         <div className="bg-zinc-950/60 rounded-2xl p-4 border border-zinc-800/60 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -165,7 +214,7 @@ export default function Login() {
 
                 <button
                     type="submit"
-                    disabled={!selectedTeacher || autoLoginTriggered.current}
+                    disabled={!selectedTeacher || !password || autoLoginTriggered.current}
                     className="w-full flex items-center justify-center space-x-3 p-4 rounded-[2rem] bg-white text-black font-bold hover:bg-zinc-200 active:scale-95 transition-all shadow-xl shadow-white/10 disabled:opacity-50 disabled:active:scale-100 mb-4"
                 >
                     <span>Continue to Dashboard</span>
@@ -176,7 +225,7 @@ export default function Login() {
                     <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest">Are you a student?</p>
                     <Link 
                         to="/student-login"
-                        className="inline-block w-full p-4 rounded-[2rem] bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-all shadow-lg"
+                        className="inline-block w-full p-4 rounded-[2rem] glass text-emerald-400 font-bold hover:bg-white/5 transition-all shadow-lg"
                     >
                         Go to Student Portal &rarr;
                     </Link>

@@ -4,13 +4,25 @@ import * as faceapi from '@vladmandic/face-api';
 import { ArrowLeft, CheckCircle2, ScanFace } from 'lucide-react';
 import CameraView from '../components/CameraView';
 import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
-import { getStudents, getPeriods, saveBatchLogs, getFaceDescriptors, getCurrentTeacher, checkLateStatus, getLogs } from '../utils/storage';
+import { getStudents, getPeriods, saveBatchLogs, getFaceDescriptors, getCurrentTeacher, checkLateStatus, getLogs, getTimetable } from '../utils/storage';
 import { announceAttendance, speak } from '../utils/speechUtils';
 import { Volume2, VolumeX, MapPin, Clock3, Camera } from 'lucide-react';
 
 export default function Attendance() {
     const navigate = useNavigate();
     const PERIODS = getPeriods();
+    const timetable = getTimetable();
+    const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    const todaySubjects = timetable[currentDay] ? Object.values(timetable[currentDay]).filter(Boolean) : [];
+    
+    const hasTimetableEntries = Object.keys(timetable).length > 0;
+    const availablePeriods = hasTimetableEntries 
+        ? PERIODS.filter(p => {
+            const name = typeof p === 'string' ? p : p.periodName;
+            return todaySubjects.includes(name);
+        })
+        : PERIODS;
+
     const [selectedPeriod, setSelectedPeriod] = useState('');
     const [loading, setLoading] = useState(true);
     const [registeredCount, setRegisteredCount] = useState(0);
@@ -279,7 +291,10 @@ export default function Attendance() {
                     }}
                 >
                     <option value="">-- Choose Period --</option>
-                    {PERIODS.map(p => {
+                    {availablePeriods.length === 0 && hasTimetableEntries && (
+                        <option value="" disabled>No classes scheduled for today ({currentDay})</option>
+                    )}
+                    {availablePeriods.map(p => {
                         const name = typeof p === 'string' ? p : p.periodName;
                         return <option key={name} value={name}>{name}</option>;
                     })}

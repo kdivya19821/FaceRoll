@@ -7,10 +7,10 @@ import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
 import { announceRegistration } from '../utils/speechUtils';
 import { 
     getStudents, saveFaceDescriptor, getFaceDescriptors, removeFaceDescriptor,
-    TEACHER_SUBJECTS, saveTeacherFaceDescriptor, getTeacherFaceDescriptors, removeTeacherFaceDescriptor 
+    getTeacherSubjects, saveTeacherFaceDescriptor, getTeacherFaceDescriptors, removeTeacherFaceDescriptor 
 } from '../utils/storage';
 
-const TEACHERS = Object.keys(TEACHER_SUBJECTS);
+// Dynamic
 
 export default function Register() {
     const navigate = useNavigate();
@@ -166,7 +166,7 @@ export default function Register() {
                             <option value="">-- Choose Name --</option>
                             {registerMode === 'student' 
                                 ? getStudents().map(s => <option key={s.id} value={s.id.toString()}>{s.id}. {s.name} {studentData[s.id] ? '(Registered)' : ''}</option>)
-                                : TEACHERS.map(t => <option key={t} value={t}>{t} {teacherData[t] ? '(Registered)' : ''}</option>)
+                                : Object.keys(getTeacherSubjects()).map(t => <option key={t} value={t}>{t} {teacherData[t] ? '(Registered)' : ''}</option>)
                             }
                         </select>
                     </div>

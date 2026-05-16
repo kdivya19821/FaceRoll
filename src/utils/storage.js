@@ -3,19 +3,43 @@ const FACE_DATA_KEY = 'smart_attendance_faces';
 const TEACHER_KEY = 'smart_attendance_teacher';
 const PERIODS_KEY = 'smart_attendance_periods';
 const STUDENT_LIST_KEY = 'smart_attendance_student_list';
+const TIMETABLE_KEY = 'smart_attendance_timetable';
+const TEACHER_FACE_DATA_KEY = 'smart_attendance_teacher_faces';
+const LEAVES_KEY = 'smart_attendance_leaves';
+const TEACHER_LIST_KEY = 'smart_attendance_teacher_list';
 
 const DEFAULT_STUDENTS = [
-    { id: 1, name: 'Affrin' },
-    { id: 2, name: 'SyedaSafiya' },
-    { id: 3, name: 'Sibitha' },
-    { id: 4, name: 'Akshita' },
-    { id: 5, name: 'Kusuma' },
-    { id: 6, name: 'Sheetal' },
-    { id: 7, name: 'Divya' },
-    { id: 8, name: 'saara' },
-    { id: 9, name: 'Gowri' },
-    { id: 10, name: 'IfthazNoor' }
+    { id: '1', name: 'Affrin', password: 'affrin@faceroll' },
+    { id: '2', name: 'SyedaSafiya', password: 'syedasafiya@faceroll' },
+    { id: '3', name: 'Sibitha', password: 'sibitha@faceroll' },
+    { id: '4', name: 'Akshita', password: 'akshita@faceroll' },
+    { id: '5', name: 'Kusuma', password: 'kusuma@faceroll' },
+    { id: '6', name: 'Sheetal', password: 'sheetal@faceroll' },
+    { id: '7', name: 'Divya', password: 'divya@faceroll' },
+    { id: '8', name: 'saara', password: 'saara@faceroll' },
+    { id: '9', name: 'Gowri', password: 'gowri@faceroll' },
+    { id: '10', name: 'IfthazNoor', password: 'ifthaznoor@faceroll' }
 ];
+
+const DEFAULT_TEACHERS = [
+    { name: 'Ms.Soumya', password: 'soumya@faceroll', subjects: ['AI', 'Web Content System Management'] },
+    { name: 'Ms.Sujatha', password: 'sujatha@faceroll', subjects: ['FDS'] },
+    { name: 'Ms.Selva Priya', password: 'selvapriya@faceroll', subjects: ['PHP and MySQL'] }
+];
+
+export function getTeacherPasswords() {
+    const teachers = getTeachers();
+    const passwords = {};
+    teachers.forEach(t => { passwords[t.name] = t.password; });
+    return passwords;
+}
+
+export function getTeacherSubjects() {
+    const teachers = getTeachers();
+    const subjects = {};
+    teachers.forEach(t => { subjects[t.name] = t.subjects || []; });
+    return subjects;
+}
 
 // Helper to sync local data from backend
 async function syncFromBackend(endpoint, key, defaultData = null) {
@@ -38,6 +62,7 @@ async function syncFromBackend(endpoint, key, defaultData = null) {
 // Initial Sync trigger (runs in background)
 setTimeout(() => {
     syncFromBackend('students', STUDENT_LIST_KEY, DEFAULT_STUDENTS);
+    syncFromBackend('teachers', TEACHER_LIST_KEY, DEFAULT_TEACHERS);
     syncFromBackend('logs', STORAGE_KEY, []);
     syncFromBackend('faces', FACE_DATA_KEY, {});
     syncFromBackend('teacher-faces', TEACHER_FACE_DATA_KEY, {});
@@ -56,7 +81,7 @@ export function getStudents() {
 
 export function saveStudent(student) {
     const students = getStudents();
-    const existing = students.find(s => s.id === student.id);
+    const existing = students.find(s => s.id.toString() === student.id.toString());
     if (existing) {
         existing.name = student.name;
     } else {
@@ -80,17 +105,55 @@ export function removeStudent(studentId) {
     fetch(`/api/students/${studentId}`, { method: 'DELETE' }).catch(e => console.error(e));
 }
 
-export const TEACHER_SUBJECTS = {
-    'Ms.Soumya': ['AI', 'Web Content System Management'],
-    'Ms.Sujatha': ['FDS'],
-    'Ms.Selva Priya': ['PHP and MySQL']
-};
+export function getTeachers() {
+    const list = localStorage.getItem(TEACHER_LIST_KEY);
+    if (!list) {
+        localStorage.setItem(TEACHER_LIST_KEY, JSON.stringify(DEFAULT_TEACHERS));
+        return DEFAULT_TEACHERS;
+    }
+    return JSON.parse(list);
+}
+
+export function saveTeacher(teacher) {
+    const teachers = getTeachers();
+    const existing = teachers.find(t => t.name === teacher.name);
+    if (existing) {
+        existing.password = teacher.password;
+        existing.subjects = teacher.subjects;
+    } else {
+        teachers.push(teacher);
+    }
+    localStorage.setItem(TEACHER_LIST_KEY, JSON.stringify(teachers));
+
+    // Sync to backend
+    fetch('/api/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(teacher)
+    }).catch(e => console.error(e));
+}
+
+export function removeTeacher(teacherId) {
+    const teachers = getTeachers();
+    const teacher = teachers.find(t => t.id === teacherId);
+    if (!teacher) return;
+    
+    const updated = teachers.filter(t => t.id !== teacherId);
+    localStorage.setItem(TEACHER_LIST_KEY, JSON.stringify(updated));
+
+    // Sync to backend
+    fetch(`/api/teachers/${teacherId}`, { method: 'DELETE' }).catch(e => console.error(e));
+}
 
 export const PERIOD_TIMINGS = {
+    'Period 1': '09:00-09:45',
+    'Period 2': '09:45-10:30',
+    'Period 3': '10:45-11:30',
+    'Period 4': '11:30-12:30',
     'AI': '09:00-09:45',
-    'Web Content System Management': '10:30-11:15',
-    'FDS': '11:45-12:30',
-    'PHP and MySQL': '12:30-1:15',
+    'FDS': '09:45-10:30',
+    'PHP and MySQL': '09:45-10:30',
+    'Web Content System Management': '11:30-12:30'
 };
 
 export function checkLateStatus(periodName) {
@@ -127,17 +190,21 @@ function _calculateLateStatus(startStr, endStr) {
     if (now < startObj) {
         return { isLate: false, isAllowed: false, status: 'Early' };
     }
-    if (now > endObj) {
-        return { isLate: false, isAllowed: false, status: 'Absent' };
-    }
 
-    const lateThresholdMinutes = 15;
     const diffMins = (now - startObj) / (1000 * 60);
 
-    if (diffMins > lateThresholdMinutes) {
+    // Within 2 minutes: Present
+    if (diffMins <= 2) {
+        return { isLate: false, isAllowed: true, status: 'Present' };
+    }
+    
+    // Between 2 and 10 minutes: Late
+    if (diffMins <= 10) {
         return { isLate: true, isAllowed: true, status: 'Late' };
     }
-    return { isLate: false, isAllowed: true, status: 'On-time' };
+
+    // After 10 minutes or past end time: Absent
+    return { isLate: false, isAllowed: false, status: 'Absent' };
 }
 
 export function login(name) {
@@ -164,7 +231,8 @@ export function getPeriods() {
     let periods = periodsStr ? JSON.parse(periodsStr) : null;
 
     if (!periods || periods.length === 0) {
-        const defaults = TEACHER_SUBJECTS[teacher] || [];
+        const subjects = getTeacherSubjects();
+        const defaults = subjects[teacher] || [];
         if (defaults.length > 0) {
             localStorage.setItem(key, JSON.stringify(defaults));
             return defaults;
@@ -279,10 +347,24 @@ export async function saveBatchLogs(logsDataArray) {
     return { success: true, count: savedLogs.length };
 }
 
+// Existing functions remain unchanged above.
+
+/** Timetable persistence **/
+export function getTimetable() {
+  const data = localStorage.getItem(TIMETABLE_KEY);
+  return data ? JSON.parse(data) : [];
+}
+
+export function saveTimetable(timetable) {
+  localStorage.setItem(TIMETABLE_KEY, JSON.stringify(timetable));
+  // optional backend sync could be added here
+}
+
 export function clearLogs() {
     localStorage.removeItem(STORAGE_KEY);
     fetch('/api/logs', { method: 'DELETE' }).catch(e => console.error(e));
 }
+
 
 export function saveFaceDescriptor(studentId, descriptorArray) {
     const faces = getFaceDescriptors();
@@ -370,7 +452,7 @@ export function getAttendanceStats(timeframe = 'all') {
     });
 }
 
-const TEACHER_FACE_DATA_KEY = 'smart_attendance_teacher_faces';
+
 
 export function saveTeacherFaceDescriptor(teacherName, descriptorArray) {
     const faces = getTeacherFaceDescriptors();
@@ -408,7 +490,7 @@ export function removeTeacherFaceDescriptor(teacherName) {
 const STUDENT_SESSION_KEY = 'smart_attendance_current_student';
 
 export function loginStudent(studentId) {
-    localStorage.setItem(STUDENT_SESSION_KEY, studentId.toString());
+    localStorage.setItem(STUDENT_SESSION_KEY, studentId);
 }
 
 export function logoutStudent() {
@@ -452,7 +534,7 @@ export function getStudentStats(studentId) {
     });
 }
 
-const LEAVES_KEY = 'smart_attendance_leaves';
+
 
 export function getLeaves() {
     const leaves = localStorage.getItem(LEAVES_KEY);

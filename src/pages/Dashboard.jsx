@@ -13,6 +13,12 @@ export default function Dashboard() {
     const [viewMode, setViewMode] = useState('recent'); // 'recent' or 'stats'
     const [logs, setLogs] = useState(getLogs().filter(l => l.teacher === teacher).reverse());
     const [timeframe, setTimeframe] = useState('all'); // 'all', 'weekly', 'monthly'
+    const [selectedSubject, setSelectedSubject] = useState('all');
+    const [selectedStudent, setSelectedStudent] = useState('all');
+    
+    const studentsList = getStudents();
+    
+    const subjects = Array.from(new Set(logs.map(l => l.period)));
     
     // Calculate cutoff date once outside the loop
     const now = new Date();
@@ -20,14 +26,22 @@ export default function Dashboard() {
     const cutoffDate = timeframe !== 'all' ? new Date(now.setDate(now.getDate() - days)) : null;
 
     // Filtered logs based on selected timeframe
-    const filteredLogs = timeframe === 'all' 
+    const timeframeFilteredLogs = timeframe === 'all' 
         ? logs 
         : logs.filter(log => {
             const logDate = new Date(log.timestamp || log.fullDate);
             return logDate >= cutoffDate;
         });
 
-    const stats = getAttendanceStats(timeframe);
+    const filteredLogs = timeframeFilteredLogs.filter(l => {
+        const subjectMatch = selectedSubject === 'all' || l.period === selectedSubject;
+        const studentMatch = selectedStudent === 'all' || l.studentId.toString() === selectedStudent.toString();
+        return subjectMatch && studentMatch;
+    });
+
+    const stats = getAttendanceStats(timeframe).filter(s => 
+        selectedStudent === 'all' || s.studentId.toString() === selectedStudent.toString()
+    );
 
     // Calculate total sessions taken by teacher in this timeframe
     const totalTeacherSessions = Array.from(new Set(filteredLogs.map(l => `${l.period}-${l.fullDate}`))).length;
@@ -41,27 +55,72 @@ export default function Dashboard() {
     };
 
     const handleExport = () => {
-        if (logs.length === 0) {
+        const logsToExport = filteredLogs;
+        if (logsToExport.length === 0) {
             alert("No records to export!");
             return;
         }
 
         const headers = ["Student ID", "Name", "Subject", "Teacher", "Date", "Time", "Day", "Is Late", "Latitude", "Longitude"];
-        const csvRows = logs.map(log => [
-            log.studentId,
-            `"${log.studentName}"`,
-            `"${log.period}"`,
-            `"${log.teacher}"`,
-            log.fullDate,
-            log.time,
-            log.day,
-            log.isLate ? "YES" : "NO",
-            log.location?.lat || "N/A",
-            log.location?.lng || "N/A"
-        ].join(","));
+        
+        // If 'all' subjects are shown, ask if they want separate files
+        if (selectedSubject === 'all' && subjects.length > 1) {
+            if (confirm("Export each subject as a SEPARATE file? (Click Cancel to export as a single grouped file)")) {
+                subjects.forEach(subject => {
+                    const subjectLogs = logsToExport.filter(l => l.period === subject);
+                    if (subjectLogs.length === 0) return;
+                    
+                    const csvRows = subjectLogs.map(log => [
+                        log.studentId,
+                        `"${log.studentName}"`,
+                        `"${log.period}"`,
+                        `"${log.teacher}"`,
+                        log.fullDate,
+                        log.time,
+                        log.day,
+                        log.isLate ? "YES" : "NO",
+                        log.location?.lat || "N/A",
+                        log.location?.lng || "N/A"
+                    ].join(","));
 
-        const csvContent = [headers.join(","), ...csvRows].join("\n");
-        downloadCSV(csvContent, `Attendance_Raw_Logs_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`);
+                    const csvContent = [headers.join(","), ...csvRows].join("\n");
+                    downloadCSV(csvContent, `Attendance_${subject}_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`);
+                });
+                return;
+            }
+        }
+
+        // Single file export (Grouped by subject)
+        const sortedLogs = [...logsToExport].sort((a, b) => a.period.localeCompare(b.period));
+        const csvRows = [headers.join(",")];
+        let currentSub = "";
+        
+        sortedLogs.forEach(log => {
+            if (log.period !== currentSub) {
+                if (currentSub !== "") csvRows.push("");
+                csvRows.push(`"SECTION: ${log.period.toUpperCase()}"`);
+                currentSub = log.period;
+            }
+            csvRows.push([
+                log.studentId,
+                `"${log.studentName}"`,
+                `"${log.period}"`,
+                `"${log.teacher}"`,
+                log.fullDate,
+                log.time,
+                log.day,
+                log.isLate ? "YES" : "NO",
+                log.location?.lat || "N/A",
+                log.location?.lng || "N/A"
+            ].join(","));
+        });
+
+        const csvContent = csvRows.join("\n");
+        const fileName = selectedSubject === 'all' 
+            ? `Attendance_All_Subjects_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`
+            : `Attendance_${selectedSubject}_${timeframe.toUpperCase()}_${new Date().toLocaleDateString()}.csv`;
+            
+        downloadCSV(csvContent, fileName);
     };
 
     const handleExportStats = () => {
@@ -147,9 +206,9 @@ export default function Dashboard() {
     };
 
     return (
-        <div className="flex flex-col h-[100dvh] bg-zinc-950 p-4 animate-in fade-in duration-300 overflow-hidden">
+        <div className="flex flex-col h-[100dvh] p-4 animate-in fade-in duration-300 overflow-hidden">
             <div className="flex items-center justify-between mb-6 px-2 mt-2">
-                <button onClick={() => navigate('/')} className="p-2 bg-zinc-800/80 rounded-full hover:bg-zinc-700 transition border border-zinc-700">
+                <button onClick={() => navigate('/')} className="p-2 glass rounded-full hover:bg-white/10 transition">
                     <ArrowLeft className="w-5 h-5 text-zinc-300" />
                 </button>
                 <h2 className="text-xl font-bold text-white tracking-tight">Analytics</h2>
@@ -197,7 +256,7 @@ export default function Dashboard() {
                             className={`flex-1 py-3 px-3 text-[10px] font-black rounded-2xl border transition-all duration-300 ${
                                 timeframe === tf
                                     ? activeColors
-                                    : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                                    : 'glass border-white/5 text-zinc-500 hover:text-zinc-300'
                             }`}
                         >
                             {tf === 'all' ? 'OVERALL' : tf === 'monthly' ? 'THIS MONTH' : 'THIS WEEK'}
@@ -206,20 +265,64 @@ export default function Dashboard() {
                 })}
             </div>
 
-            {/* Dynamic Timeframe Heading */}
-            <div className="flex items-center space-x-3 mb-4 px-2">
-                <div className={`h-6 w-1 rounded-full ${
-                    timeframe === 'all' ? 'bg-emerald-500' :
-                    timeframe === 'monthly' ? 'bg-amber-500' :
-                    'bg-cyan-500'
-                }`}></div>
-                <h3 className="text-sm font-black text-white uppercase tracking-widest">
-                    {timeframe === 'all' ? 'Overall Attendance' : timeframe === 'monthly' ? 'Monthly Report' : 'Weekly Summary'}
-                </h3>
+            {/* Dynamic Timeframe Heading & Subject Filter */}
+            <div className="flex items-center justify-between mb-4 px-2">
+                <div className="flex items-center space-x-3">
+                    <div className={`h-6 w-1 rounded-full ${
+                        timeframe === 'all' ? 'bg-emerald-500' :
+                        timeframe === 'monthly' ? 'bg-amber-500' :
+                        'bg-cyan-500'
+                    }`}></div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest">
+                        {timeframe === 'all' ? 'Overall Attendance' : timeframe === 'monthly' ? 'Monthly Report' : 'Weekly Summary'}
+                    </h3>
+                </div>
+                
+                {subjects.length > 0 && (
+                    <div className="flex space-x-2">
+                        <select 
+                            value={selectedStudent}
+                            onChange={(e) => setSelectedStudent(e.target.value)}
+                            className="bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-tighter px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                            <option value="all">All Students</option>
+                            {studentsList.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                        </select>
+
+                        <select 
+                            value={selectedSubject}
+                            onChange={(e) => setSelectedSubject(e.target.value)}
+                            className="bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-tighter px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                            <option value="all">All Subjects</option>
+                            {subjects.map(sub => (
+                                <option key={sub} value={sub}>{sub}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
             </div>
 
+            {/* Summary Stats for Selected Student */}
+            {selectedStudent !== 'all' && (
+                <div className="grid grid-cols-2 gap-3 mb-6 mx-1">
+                    <div className="glass border-indigo-500/20 rounded-3xl p-5 shadow-2xl">
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1.5">Total Days Present</p>
+                        <p className="text-3xl font-black text-white">{filteredLogs.length}</p>
+                    </div>
+                    <div className="glass border-emerald-500/20 rounded-3xl p-5 shadow-2xl">
+                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1.5">Avg. Attendance</p>
+                        <p className="text-3xl font-black text-white">
+                            {stats.length > 0 ? Math.round(stats.reduce((acc, s) => acc + s.percentage, 0) / stats.length) : 0}%
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Toggle Switch */}
-            <div className="flex bg-zinc-900/80 rounded-2xl p-1 mb-6 border border-zinc-800 mx-1">
+            <div className="flex glass rounded-2xl p-1 mb-6 mx-1">
                 <button 
                     className={`flex-1 flex items-center justify-center space-x-2 py-2.5 text-[10px] font-black rounded-xl transition-all ${viewMode === 'recent' ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
                     onClick={() => setViewMode('recent')}
@@ -293,8 +396,8 @@ export default function Dashboard() {
                                     const presentCount = session.present.size;
                                     const absentCount = Math.max(0, allStudentsCount - presentCount);
                                     return (
-                                        <div key={idx} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl">
-                                            <div className="flex justify-between items-start mb-4">
+                                        <div className="glass-dark rounded-3xl p-5 shadow-2xl mb-4">
+                                            <div className="flex items-center justify-between p-3 rounded-2xl glass border-white/5 mb-4">
                                                 <div>
                                                     <h3 className="text-base font-bold text-white">{session.subject}</h3>
                                                     <div className="flex items-center space-x-2 mt-0.5">
@@ -339,7 +442,7 @@ export default function Dashboard() {
                         </div>
                     ) : (
                         filteredLogs.map((log, index) => (
-                            <div key={index} className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 shadow-xl mb-4 animate-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${index * 50}ms` }}>
+                            <div key={index} className="glass-dark rounded-2xl p-5 shadow-xl mb-4 animate-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${index * 50}ms` }}>
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="space-y-0.5">
                                         <h3 className="text-lg font-bold text-white leading-tight">
@@ -347,7 +450,7 @@ export default function Dashboard() {
                                         </h3>
                                         <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">ID: #{log.studentId}</p>
                                     </div>
-                                    <div className="bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
+                                    <div className="glass border-indigo-500/20 px-3 py-1 rounded-full">
                                         <p className="text-[10px] font-black text-indigo-400 tracking-wider">
                                             {log.period}
                                         </p>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
-import { getStudents, getPeriods, saveBatchLogs, getCurrentTeacher, getLogs } from '../utils/storage';
+import { getStudents, getPeriods, saveBatchLogs, getCurrentTeacher, getLogs, checkLateStatus } from '../utils/storage';
 
 export default function ManualAttendance() {
     const navigate = useNavigate();
@@ -29,6 +29,15 @@ export default function ManualAttendance() {
     const handleSaveLog = async () => {
         if (!selectedPeriod) {
             alert('Please select a period first!');
+            return;
+        }
+
+        const statusInfo = checkLateStatus(selectedPeriod);
+        if (!statusInfo.isAllowed) {
+            const msg = statusInfo.status === 'Early' 
+                ? "Class hasn't started yet!" 
+                : "Class has already ended (or the 10-minute late limit passed). You cannot mark attendance now.";
+            alert(msg);
             return;
         }
 
@@ -82,31 +91,44 @@ export default function ManualAttendance() {
 
             <div className="bg-zinc-900 rounded-3xl p-4 mb-6 shadow-xl border border-zinc-800/80">
                 <label className="block text-sm font-medium text-zinc-400 mb-2">Select Period</label>
-                <select
-                    className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-xl py-4 px-4 font-semibold outline-none focus:ring-2 focus:ring-amber-500/50 appearance-none"
-                    value={selectedPeriod}
-                    onChange={(e) => {
-                        const period = e.target.value;
-                        setSelectedPeriod(period);
-                        if (period) {
-                            const logs = getLogs();
-                            const today = new Date().toDateString();
-                            const marked = new Set(
-                                logs.filter(l => l.period === period && l.fullDate === today)
-                                    .map(l => l.studentId.toString())
-                            );
-                            setMarkedIds(marked);
-                        } else {
-                            setMarkedIds(new Set());
-                        }
-                    }}
-                >
-                    <option value="">-- Choose Period --</option>
-                    {PERIODS.map(p => {
-                        const name = typeof p === 'string' ? p : p.periodName;
-                        return <option key={name} value={name}>{name}</option>;
-                    })}
-                </select>
+                <div className="relative">
+                    <select
+                        className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-xl py-4 px-4 font-semibold outline-none focus:ring-2 focus:ring-amber-500/50 appearance-none"
+                        value={selectedPeriod}
+                        onChange={(e) => {
+                            const period = e.target.value;
+                            setSelectedPeriod(period);
+                            if (period) {
+                                const logs = getLogs();
+                                const today = new Date().toDateString();
+                                const marked = new Set(
+                                    logs.filter(l => l.period === period && l.fullDate === today)
+                                        .map(l => l.studentId.toString())
+                                );
+                                setMarkedIds(marked);
+                            } else {
+                                setMarkedIds(new Set());
+                            }
+                        }}
+                    >
+                        <option value="">-- Choose Period --</option>
+                        {PERIODS.map(p => {
+                            const name = typeof p === 'string' ? p : p.periodName;
+                            return <option key={name} value={name}>{name}</option>;
+                        })}
+                    </select>
+                    {selectedPeriod && (() => {
+                        const s = checkLateStatus(selectedPeriod);
+                        return (
+                            <div className={`mt-3 px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest flex items-center space-x-2 ${
+                                s.isAllowed ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                            }`}>
+                                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${s.isAllowed ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                                <span>Status: {s.status === 'Early' ? 'NOT STARTED' : s.isAllowed ? 'OPEN FOR ATTENDANCE' : 'CLASS ENDED'}</span>
+                            </div>
+                        );
+                    })()}
+                </div>
             </div>
 
             {students.length === 0 ? (

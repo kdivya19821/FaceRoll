@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import * as faceapi from '@vladmandic/face-api';
-import { ScanFace, LogIn, ArrowLeft } from 'lucide-react';
+import { ScanFace, LogIn, ArrowLeft, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { loginStudent, getCurrentStudent, getStudents, getFaceDescriptors } from '../utils/storage';
 import CameraView from '../components/CameraView';
 import { loadModels, detectFaces, toFloat32Array } from '../utils/faceUtils';
@@ -10,6 +10,9 @@ export default function StudentLogin() {
     const navigate = useNavigate();
     const students = getStudents();
     const [selectedStudentId, setSelectedStudentId] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [error, setError] = useState('');
     const [loadingModels, setLoadingModels] = useState(true);
     const [scanStatus, setScanStatus] = useState('Initializing Scanner...');
 
@@ -96,7 +99,15 @@ export default function StudentLogin() {
 
     const handleManualLogin = (e) => {
         e.preventDefault();
+        setError('');
         if (!selectedStudentId) return;
+
+        const student = students.find(s => s.id.toString() === selectedStudentId);
+        if (!student || student.password !== password) {
+            setError('Incorrect password');
+            return;
+        }
+
         loginStudent(selectedStudentId);
         navigate('/student-dashboard', { replace: true });
     };
@@ -146,10 +157,13 @@ export default function StudentLogin() {
             <form onSubmit={handleManualLogin} className="w-full space-y-4 pb-6">
                 <div className="bg-zinc-900 rounded-[2rem] p-5 shadow-xl border border-zinc-800 space-y-4">
                     <div>
-                        <label className="block text-sm font-semibold text-zinc-400 mb-2 ml-1">Or Select Name Manually</label>
+                        <label className="block text-sm font-semibold text-zinc-400 mb-2 ml-1">Select Name</label>
                         <select
                             value={selectedStudentId}
-                            onChange={(e) => setSelectedStudentId(e.target.value)}
+                            onChange={(e) => {
+                                setSelectedStudentId(e.target.value);
+                                setError('');
+                            }}
                             disabled={autoLoginTriggered.current}
                             className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-2xl py-3.5 px-4 font-semibold outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all appearance-none"
                         >
@@ -159,11 +173,41 @@ export default function StudentLogin() {
                             ))}
                         </select>
                     </div>
+
+                    {selectedStudentId && (
+                        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                            <label className="block text-sm font-semibold text-zinc-400 mb-2 ml-1">Password</label>
+                            <div className="relative group">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <KeyRound className="w-5 h-5 text-zinc-500 group-focus-within:text-emerald-400 transition-colors" />
+                                </div>
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => {
+                                        setPassword(e.target.value);
+                                        setError('');
+                                    }}
+                                    disabled={autoLoginTriggered.current}
+                                    placeholder="Enter your password"
+                                    className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-2xl py-3.5 pl-11 pr-12 font-semibold outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-zinc-500 hover:text-white transition-colors"
+                                >
+                                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                            </div>
+                            {error && <p className="text-rose-500 text-sm mt-2 ml-1 font-medium">{error}</p>}
+                        </div>
+                    )}
                 </div>
 
                 <button
                     type="submit"
-                    disabled={!selectedStudentId || autoLoginTriggered.current}
+                    disabled={!selectedStudentId || !password || autoLoginTriggered.current}
                     className="w-full flex items-center justify-center space-x-3 p-4 rounded-[2rem] bg-emerald-500 text-black font-bold hover:bg-emerald-400 active:scale-95 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-50 disabled:active:scale-100"
                 >
                     <span>View My Dashboard</span>

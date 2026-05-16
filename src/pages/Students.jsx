@@ -20,7 +20,7 @@ export default function Students() {
         e.preventDefault();
         if (!newStudent.id || !newStudent.name) return;
         
-        saveStudent({ id: Number(newStudent.id), name: newStudent.name });
+        saveStudent({ id: newStudent.id, name: newStudent.name });
         setStudents(getStudents());
         setNewStudent({ id: '', name: '' });
         setShowAddForm(false);
@@ -39,8 +39,8 @@ export default function Students() {
                 if (id && nameParts.length > 0) {
                     const name = nameParts.join(',').trim().replace(/['"\r]/g, '');
                     const cleanId = id.trim().replace(/['"\r]/g, '');
-                    if (cleanId && name && !isNaN(Number(cleanId))) {
-                        saveStudent({ id: Number(cleanId), name });
+                    if (cleanId && name) {
+                        saveStudent({ id: cleanId, name });
                         added++;
                     }
                 }
@@ -106,9 +106,9 @@ export default function Students() {
                     </h3>
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Student ID (Number)</label>
+                            <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Student ID (e.g. U19ZSS...)</label>
                             <input 
-                                type="number" 
+                                type="text" 
                                 required
                                 value={newStudent.id}
                                 onChange={(e) => setNewStudent({...newStudent, id: e.target.value})}

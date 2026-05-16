@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Scan, Users, BookOpenCheck, Settings, LogOut, GraduationCap, CalendarCheck, ClipboardEdit, FileText } from 'lucide-react';
+import { Scan, Users, BookOpenCheck, Settings, LogOut, GraduationCap, CalendarCheck, ClipboardEdit, FileText, Clock, Landmark } from 'lucide-react';
 import { getCurrentTeacher, logout, getStudents, getLogs } from '../utils/storage';
 
 export default function Home() {
@@ -20,7 +20,7 @@ export default function Home() {
     return (
         <div className="flex flex-col flex-1 p-6 animate-in fade-in zoom-in duration-500 justify-center">
 
-            <div className="flex justify-between items-center py-3 bg-zinc-900/80 rounded-3xl px-5 border border-zinc-800/80 mb-8 shadow-xl">
+            <div className="flex justify-between items-center py-3 glass rounded-3xl px-5 mb-8 shadow-xl">
                 <div>
                     <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-0.5">Session Active</p>
                     <p className="font-extrabold text-sm text-zinc-200">{teacher}</p>
@@ -42,14 +42,14 @@ export default function Home() {
 
             {/* Quick Stats Banner */}
             <div className="grid grid-cols-2 gap-4 mb-8">
-                <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-3xl shadow-lg relative overflow-hidden group">
+                <div className="glass border-white/5 p-4 rounded-3xl shadow-lg relative overflow-hidden group">
                     <div className="absolute -right-2 -top-2 text-violet-500/10 group-hover:text-violet-500/20 transition-colors">
                         <GraduationCap className="w-16 h-16" />
                     </div>
                     <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1 relative z-10">Total Students</p>
                     <p className="text-2xl font-black text-white relative z-10">{students.length}</p>
                 </div>
-                <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-3xl shadow-lg relative overflow-hidden group">
+                <div className="glass border-white/5 p-4 rounded-3xl shadow-lg relative overflow-hidden group">
                     <div className="absolute -right-2 -top-2 text-emerald-500/10 group-hover:text-emerald-500/20 transition-colors">
                         <CalendarCheck className="w-16 h-16" />
                     </div>
@@ -71,7 +71,7 @@ export default function Home() {
 
                 <Link
                     to="/register"
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-zinc-800/80 border border-zinc-500/20 hover:bg-zinc-800 hover:border-zinc-500/50 hover:scale-[1.02] active:scale-95 transition-all"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl glass border-white/5 hover:bg-white/5 hover:border-white/10 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                     <div className="flex items-center space-x-4">
                         <Users className="w-5 h-5 text-blue-400" />
@@ -81,7 +81,7 @@ export default function Home() {
 
                 <Link
                     to="/subjects"
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-zinc-800/80 border border-zinc-500/20 hover:bg-zinc-800 hover:border-zinc-500/50 hover:scale-[1.02] active:scale-95 transition-all"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl glass border-white/5 hover:bg-white/5 hover:border-white/10 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                     <div className="flex items-center space-x-4">
                         <Settings className="w-5 h-5 text-orange-400" />
@@ -91,7 +91,7 @@ export default function Home() {
 
                 <Link
                     to="/students"
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-zinc-800/80 border border-zinc-500/20 hover:bg-zinc-800 hover:border-zinc-500/50 hover:scale-[1.02] active:scale-95 transition-all"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl glass border-white/5 hover:bg-white/5 hover:border-white/10 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                     <div className="flex items-center space-x-4">
                         <Users className="w-5 h-5 text-violet-400" />
@@ -100,8 +100,28 @@ export default function Home() {
                 </Link>
 
                 <Link
+                    to="/teachers"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl glass border-white/5 hover:bg-white/5 hover:border-white/10 hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                    <div className="flex items-center space-x-4">
+                        <Landmark className="w-5 h-5 text-indigo-400" />
+                        <span className="font-semibold text-zinc-200">Manage Teachers</span>
+                    </div>
+                </Link>
+
+                <Link
+                    to="/timetable"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl glass border-white/5 hover:bg-white/5 hover:border-white/10 hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                    <div className="flex items-center space-x-4">
+                        <Clock className="w-5 h-5 text-green-400" />
+                        <span className="font-semibold text-zinc-200">Timetable</span>
+                    </div>
+                </Link>
+
+                <Link
                     to="/dashboard"
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-zinc-800/80 border border-zinc-500/20 hover:bg-zinc-800 hover:border-zinc-500/50 hover:scale-[1.02] active:scale-95 transition-all"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl glass border-white/5 hover:bg-white/5 hover:border-white/10 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                     <div className="flex items-center space-x-4">
                         <BookOpenCheck className="w-5 h-5 text-emerald-400" />

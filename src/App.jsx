@@ -1,5 +1,6 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Timetable from './pages/Timetable';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import Register from './pages/Register';
 import Attendance from './pages/Attendance';
@@ -12,6 +13,8 @@ import LeaveRequests from './pages/LeaveRequests';
 import StudentLogin from './pages/StudentLogin';
 import StudentDashboard from './pages/StudentDashboard';
 import DatabaseViewer from './pages/DatabaseViewer';
+import Teachers from './pages/Teachers';
+import Background from './components/Background';
 import { getCurrentTeacher, getCurrentStudent } from './utils/storage';
 
 const ProtectedRoute = ({ children }) => {
@@ -22,11 +25,27 @@ const StudentProtectedRoute = ({ children }) => {
   return getCurrentStudent() ? children : <Navigate to="/student-login" replace />;
 };
 
+const LayoutWrapper = ({ children }) => {
+  const location = useLocation();
+  const fullScreenPaths = ['/student-dashboard', '/database'];
+  
+  if (fullScreenPaths.includes(location.pathname)) {
+    return <main className="w-full min-h-[100dvh] flex flex-col relative overflow-x-hidden">{children}</main>;
+  }
+
+  return (
+    <main className="max-w-md mx-auto min-h-[100dvh] glass-dark border-x border-white/5 flex flex-col relative overflow-x-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+      {children}
+    </main>
+  );
+};
+
 function App() {
   return (
     <Router>
-      <div className="w-full min-h-screen bg-zinc-950 text-white font-sans selection:bg-indigo-500/30">
-        <main className="max-w-md mx-auto min-h-[100dvh] shadow-2xl bg-zinc-900 border-x border-zinc-800/50 flex flex-col relative overflow-x-hidden">
+      <div className="w-full min-h-screen text-white font-sans selection:bg-indigo-500/30">
+        <Background />
+        <LayoutWrapper>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/student-login" element={<StudentLogin />} />
@@ -39,9 +58,11 @@ function App() {
             <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
             <Route path="/manual-attendance" element={<ProtectedRoute><ManualAttendance /></ProtectedRoute>} />
             <Route path="/leaves" element={<ProtectedRoute><LeaveRequests /></ProtectedRoute>} />
+            <Route path="/timetable" element={<ProtectedRoute><Timetable /></ProtectedRoute>} />
+            <Route path="/teachers" element={<ProtectedRoute><Teachers /></ProtectedRoute>} />
             <Route path="/database" element={<DatabaseViewer />} />
           </Routes>
-        </main>
+        </LayoutWrapper>
       </div>
     </Router>
   );
