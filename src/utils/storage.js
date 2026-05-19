@@ -24,7 +24,8 @@ const DEFAULT_STUDENTS = [
 const DEFAULT_TEACHERS = [
     { name: 'Ms.Soumya', password: 'soumya@faceroll', subjects: ['AI', 'Web Content System Management'] },
     { name: 'Ms.Sujatha', password: 'sujatha@faceroll', subjects: ['FDS'] },
-    { name: 'Ms.Selva Priya', password: 'selvapriya@faceroll', subjects: ['PHP and MySQL'] }
+    { name: 'Ms.Selva Priya', password: 'selvapriya@faceroll', subjects: ['PHP and MySQL'] },
+    { name: 'Ms.Veena', password: 'veena@faceroll', subjects: ['Maths'] }
 ];
 
 export function getTeacherPasswords() {
@@ -42,7 +43,7 @@ export function getTeacherSubjects() {
 }
 
 // Helper to sync local data from backend
-async function syncFromBackend(endpoint, key, defaultData = null) {
+export async function syncFromBackend(endpoint, key, defaultData = null) {
     try {
         const res = await fetch(`/api/${endpoint}`);
         if (res.ok) {
@@ -67,6 +68,11 @@ setTimeout(() => {
     syncFromBackend('faces', FACE_DATA_KEY, {});
     syncFromBackend('teacher-faces', TEACHER_FACE_DATA_KEY, {});
     syncFromBackend('leaves', LEAVES_KEY, []);
+    
+    const teacher = getCurrentTeacher();
+    if (teacher) {
+        syncFromBackend(`periods/${teacher}`, PERIODS_KEY + '_' + teacher);
+    }
 }, 1000);
 
 
@@ -148,7 +154,8 @@ export function removeTeacher(teacherId) {
 export const TEACHER_PASSWORDS = {
     'Ms.Soumya': 'soumya@faceroll',
     'Ms.Sujatha': 'sujatha@faceroll',
-    'Ms.Selva Priya': 'selva@faceroll'
+    'Ms.Selva Priya': 'selva@faceroll',
+    'Ms.Veena': 'veena@faceroll'
 };
 
 export const STUDENT_PASSWORDS = {
@@ -170,17 +177,49 @@ export const PERIOD_TIMINGS = {
     'Period 3': '10:45-11:30',
     'Period 4': '11:30-12:30',
     'AI': '09:00-09:45',
-    'FDS': '09:45-10:30',
+    'FDS': '09:00-09:45',
     'PHP and MySQL': '09:45-10:30',
+    'Maths': '11:30-12:30',
     'Web Content System Management': '11:30-12:30'
 };
 
+// Helper to normalize subject names to fix duplicates like 'PHPandMySQL'
+export function normalizeSubject(name) {
+    if (!name) return name;
+    if (name.toLowerCase().replace(/\s+/g, '') === 'phpandmysql') {
+        return 'PHP and MySQL';
+    }
+    return name;
+}
+
 export function checkLateStatus(periodName) {
+    // 1. Resolve timing dynamically from the Weekly Timetable for today
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    const timetable = getTimetable();
+    
+    if (timetable && timetable[today]) {
+        const todaySchedule = timetable[today];
+        const matchedPeriodNum = Object.keys(todaySchedule).find(
+            key => normalizeSubject(todaySchedule[key]) === normalizeSubject(periodName)
+        );
+        
+        if (matchedPeriodNum) {
+            const periodKey = `Period ${matchedPeriodNum}`;
+            const timingRange = PERIOD_TIMINGS[periodKey];
+            if (timingRange) {
+                const [startStr, endStr] = timingRange.split('-');
+                console.log(`[Timetable Match] Resolved ${periodName} as Period ${matchedPeriodNum} (${startStr}-${endStr})`);
+                return _calculateLateStatus(startStr, endStr);
+            }
+        }
+    }
+
+    // 2. Fallback: Check custom dynamic teacher periods from database/local storage
     const periods = getPeriods();
     const period = periods.find(p => (typeof p === 'object' ? p.periodName : p) === periodName);
 
     if (!period || typeof period !== 'object' || !period.startTime || !period.endTime) {
-        // Fallback to old hardcoded timings if still in migration
+        // Fallback to hardcoded timings map if not resolved
         const fallbackTiming = PERIOD_TIMINGS[periodName];
         if (!fallbackTiming) return { isLate: false, isAllowed: true, status: 'On-time' };
 
@@ -208,6 +247,9 @@ function _calculateLateStatus(startStr, endStr) {
 
     if (now < startObj) {
         return { isLate: false, isAllowed: false, status: 'Early' };
+    }
+    if (now > endObj) {
+        return { isLate: false, isAllowed: false, status: 'Absent' };
     }
 
     const diffMins = (now - startObj) / (1000 * 60);
@@ -295,8 +337,10 @@ export function removePeriod(periodName) {
 }
 
 export function getLogs() {
-    const logs = localStorage.getItem(STORAGE_KEY);
-    return logs ? JSON.parse(logs) : [];
+    const logsStr = localStorage.getItem(STORAGE_KEY);
+    const logs = logsStr ? JSON.parse(logsStr) : [];
+    // Normalize subject names on retrieval
+    return logs.map(l => ({ ...l, period: normalizeSubject(l.period) }));
 }
 
 export function isAttendanceMarked(studentId, period, date) {
@@ -441,7 +485,9 @@ export function getAttendanceStats(timeframe = 'all') {
                 total: sessionsBySubject[log.period].size
             };
         }
-        stats[key].attended.add(log.fullDate);
+        if (!log.isAbsent) {
+            stats[key].attended.add(log.fullDate);
+        }
         if (log.isLate) stats[key].lateCount += 1;
     });
 
@@ -524,19 +570,21 @@ export function getStudentStats(studentId) {
     const logs = getLogs();
     const studentLogs = logs.filter(l => l.studentId.toString() === studentId.toString());
 
-    // Get all unique subjects that have ever had a session
-    const allSubjects = Array.from(new Set(logs.map(l => l.period)));
+    // Get all unique subjects defined in the system (from all teachers)
+    const teachers = getTeachers();
+    const allSubjects = Array.from(new Set(teachers.flatMap(t => t.subjects || []).map(s => normalizeSubject(s))));
 
     const sessionsBySubject = {};
     logs.forEach(log => {
-        if (!sessionsBySubject[log.period]) {
-            sessionsBySubject[log.period] = new Set();
+        const sub = normalizeSubject(log.period);
+        if (!sessionsBySubject[sub]) {
+            sessionsBySubject[sub] = new Set();
         }
-        sessionsBySubject[log.period].add(log.fullDate);
+        sessionsBySubject[sub].add(log.fullDate);
     });
 
     return allSubjects.map(subject => {
-        const subjectLogs = studentLogs.filter(l => l.period === subject);
+        const subjectLogs = studentLogs.filter(l => normalizeSubject(l.period) === subject && !l.isAbsent);
         const attended = new Set(subjectLogs.map(l => l.fullDate)).size;
         const total = sessionsBySubject[subject] ? sessionsBySubject[subject].size : 0;
         const teacher = logs.find(l => l.period === subject)?.teacher || 'N/A';

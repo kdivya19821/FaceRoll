@@ -34,9 +34,11 @@ const LayoutWrapper = ({ children }) => {
   }
 
   return (
-    <main className="max-w-md mx-auto min-h-[100dvh] glass-dark border-x border-white/5 flex flex-col relative overflow-x-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-      {children}
-    </main>
+    <div className="min-h-screen w-full flex flex-col items-center justify-start py-8 px-4">
+      <main className="w-full max-w-md glass-dark border border-white/10 rounded-[40px] flex flex-col relative overflow-visible shadow-[0_25px_60px_-15px_rgba(0,0,0,0.65)]">
+        {children}
+      </main>
+    </div>
   );
 };
 
